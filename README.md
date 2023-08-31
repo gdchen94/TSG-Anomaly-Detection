@@ -13,21 +13,16 @@ multiple adjacency spectral embedding (MASE). We demonstrate that our method is 
 
 ## Results
 
-| Figure(s) | R file | HTML file |
+| Figure(s) and table(s) | R file | HTML file |
 |:--------- |:-----------|:-----------|
-| 1  | figure1.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure1.html |
-| 2   | figure2.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure2.html |
-| 3    | figure3.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure3.html |
-| 4   | figure4.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure4.html |
-| 5    | figure5.R |
-| 6, 8, 9, 10, 11, 12, 13 | figure6_8_9_10_11_12_13.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure6_8_9_10_11_12_13.html |
-| 7, 14, 15, 16, 17 | figure7_14_15_16_17_table1_table2.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure7_14_15_16_17_table1_table2.html |
+| Figure 1  | figure1.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure1.html |
+| Figure 2   | figure2.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure2.html |
+| Figure 3    | figure3.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure3.html |
+| Figure 4   | figure4.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure4.html |
+| Figure 5    | figure5.R |
+| Figures 6, 8, 9, 10, 11, 12, 13 | figure6_8_9_10_11_12_13.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure6_8_9_10_11_12_13.html |
+| Figures 7, 14, 15, 16, 17 and tables 1, 2, 3 | figure7_14_15_16_17_table1_table2.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure7_14_15_16_17_table1_table2.html |
 
-| Table | R file | HTML file |
-|:----- |:-----------|:-----------|
-| 1   | figure7_14_15_16_17_table1_table2.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure7_14_15_16_17_table1_table2.html |
-| 2   | figure7_14_15_16_17_table1_table2.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure7_14_15_16_17_table1_table2.html |
-| 3   | figure7_14_15_16_17_table1_table2.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure7_14_15_16_17_table1_table2.html |
 
 ## Code
 
