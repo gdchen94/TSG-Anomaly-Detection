@@ -2,7 +2,7 @@
 
 This repository contains code supporting the text "Multiple Network Embedding for Anomaly Detection in Time Series of Graphs"
 
-Guodong Chen, Jes\'{u}s Arroyo, Avanti Athreya, Joshua Cape, Joshua T. Vogelstein, Youngser Park, Chris White,
+Guodong Chen, Jesus Arroyo, Avanti Athreya, Joshua Cape, Joshua T. Vogelstein, Youngser Park, Chris White,
 Jonathan Larson, Weiwei Yang, and Carey E. Priebe
 
 https://arxiv.org/abs/2008.10055
