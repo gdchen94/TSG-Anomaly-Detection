@@ -2,14 +2,14 @@
 
 This repository contains code supporting the text "Multiple Network Embedding for Anomaly Detection in Time Series of Graphs"
 
-Guodong Chen, Jesus Arroyo, Avanti Athreya, Joshua Cape, Joshua T. Vogelstein, Youngser Park, Chris White,
+Guodong Chen, Jes\'{u}s Arroyo, Avanti Athreya, Joshua Cape, Joshua T. Vogelstein, Youngser Park, Chris White,
 Jonathan Larson, Weiwei Yang, and Carey E. Priebe
 
 https://arxiv.org/abs/2008.10055
 
 ## Abstract
 This paper considers the graph signal processing problem of anomaly detection in time series of graphs. We examine two related, complementary inference tasks: the detection of anomalous graphs within a time series, and the detection of temporally anomalous vertices. We approach these tasks via the adaptation of statistically principled methods for joint graph inference, specifically 
-\emph{multiple adjacency spectral embedding} (MASE). We demonstrate that our method is effective for our inference tasks. Moreover, we assess the performance of our method in terms of the underlying nature of detectable anomalies. We further provide the theoretical justification for our method and insight into its use. Applied to the Enron communication graph and a large-scale commercial search engine time series of graphs, our approaches demonstrate their applicability and identify the anomalous vertices beyond just large degree change.
+multiple adjacency spectral embedding (MASE). We demonstrate that our method is effective for our inference tasks. Moreover, we assess the performance of our method in terms of the underlying nature of detectable anomalies. We further provide the theoretical justification for our method and insight into its use. Applied to the Enron communication graph and a large-scale commercial search engine time series of graphs, our approaches demonstrate their applicability and identify the anomalous vertices beyond just large degree change.
 
 ## Results
 
