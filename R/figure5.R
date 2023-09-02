@@ -16,6 +16,7 @@ current_script_path <- getSourceEditorContext()$path
 # Set the working directory to the directory containing the current script
 setwd(dirname(current_script_path))
 source("../Utils/utils.R")
+
 # registerDoParallel(detectCores()-1) ## uncomment this to use multicore
 
 # Running this code without GP will take about 12 hrs.
@@ -44,67 +45,119 @@ approx <- TRUE
 center <- FALSE
 
 #pairwise mase
-df <- foreach(alpha = c(0,seq(8)/8), .combine='rbind') %dopar% {
-  out <- foreach(i = 1:nullnmc, .combine='rbind') %dopar% {
-
-    set.seed(123+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb=0, rmin, rmax, tmax, d_true,alpha)
-    out2 <- doMase(glist, 2, d1,d3,center, approx, py, method3)
-    out12 <- doMase(glist, 12, d1,d3,center, approx, py, method3)
+# Initialize the final data frame to store results
+df <- data.frame()
+alpha_values = c(0, seq(8)/8)
+for(a in 1:length(alpha_values)){
+  alpha = alpha_values[a]
+  
+  # Initialize the intermediate 'out' data frame to collect results for each alpha
+  out = data.frame()
+  
+  for(i in 1:nullnmc){
+    # Setting the seed for reproducibility
+    set.seed(123 + i - 1)
+    
+    # Generating the time series data
+    glist <- genTSGonepar(n, nperturb, cperturb=0, rmin, rmax, tmax, d_true, alpha)
+    
+    # Calculating MASE for two different periods (2 and 12)
+    out2 <- doMase(glist, 2, d1, d3, center, approx, py, method3)
+    out12 <- doMase(glist, 12, d1, d3, center, approx, py, method3)
+    
+    # Storing the results in data frames and setting column names
     out.p2 <- data.frame(as.vector(t(out2$tnorm[-c(5,6,7)])), mase="MASE2", alpha=factor(alpha))
     colnames(out.p2)[1] <- "tnorm"
     out.p12 <- data.frame(as.vector(t(out12$tnorm[-c(5,6,7)])), mase="MASE12", alpha=factor(alpha))
     colnames(out.p12)[1] <- "tnorm"
+    
+    # Combining the results for MASE2 and MASE12
     out.p <- rbind(out.p2, out.p12)
+    
+    # Adding the combined results to the 'out' data frame
+    out <- rbind(out, out.p)
   }
-  c2 <- rep(0, 11)#c(0)
-  c12 <- rep(0, 11)#c(0)
-  a <- rep(0,pvalnmc)
+  
+  # Initialize vectors to hold p-values and counts
+  c2 <- rep(0, 11)
+  c12 <- rep(0, 11)
+  
+  # Calculating p-values and counts for the MASE
   for(i in 1:pvalnmc){
     set.seed(123+nullnmc+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true,alpha)
-    out2 <- doMase(glist, 2, d1,d3,center, approx, py, method3)
-    out12 <- doMase(glist, 12, d1,d3, center, approx, py, method3)
+    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true, alpha)
+    out2 <- doMase(glist, 2, d1, d3, center, approx, py, method3)
+    out12 <- doMase(glist, 12, d1, d3, center, approx, py, method3)
+    
     pvalues2 <- rep(0, (tmax-1))
     pvalues12 <- rep(0, (tmax-1))
     for (j in 1:11) {
       pvalues2[j] <- sum(out2$tnorm[j]<sort(out[which(out$mase=="MASE2"&out$alpha==alpha),1]))/(nullnmc*8)
       pvalues12[j] <- sum(out12$tnorm[j]<sort(out[which(out$mase=="MASE12"&out$alpha==alpha),1]))/(nullnmc*8)
     }
-
+    
     c2 <- c2 + (p.adjust(pvalues2, "BH")<.05)
     c12 <- c12 + (p.adjust(pvalues12, "BH")<.05)
   }
-  df2 <- data.frame(time=factor(m2, levels=m2),power=c2/pvalnmc, se = sqrt( (c2/pvalnmc) * (1 - c2/pvalnmc)/pvalnmc ) ,mase="MASE2", alpha=factor(alpha))
-  df12 <- data.frame(time=factor(m2, levels=m2),power=c12/pvalnmc, se = sqrt( (c12/pvalnmc) * (1 - c12/pvalnmc)/pvalnmc ),mase="MASE12", alpha=factor(alpha))
-  df <- rbind(df2, df12)
-  df
+  
+  # Create data frames to store power and standard error for MASE2 and MASE12
+  df2 <- data.frame(time=factor(m2, levels=m2), power=c2/pvalnmc, se = sqrt( (c2/pvalnmc) * (1 - c2/pvalnmc)/pvalnmc ), mase="MASE2", alpha=factor(alpha))
+  df12 <- data.frame(time=factor(m2, levels=m2), power=c12/pvalnmc, se = sqrt( (c12/pvalnmc) * (1 - c12/pvalnmc)/pvalnmc ), mase="MASE12", alpha=factor(alpha))
+  
+  # Combine the data frames for MASE2 and MASE12
+  df_temp <- rbind(df2, df12)
+  
+  # Add the combined data frame to the final result 'df'
+  df <- rbind(df, df_temp)
 }
 dfm <- df
 dfm <- dfm  %>% group_by(mase)
 
 #pairwise omni
 dmax <- 4#4
-df <- foreach(alpha = c(0,seq(8)/8), .combine='rbind') %dopar% {
-  out <- foreach(i = 1:nullnmc, .combine='rbind') %dopar% {
-    set.seed(123+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb=0, rmin, rmax, tmax, d_true,alpha )
+# Initialize the final data frame to store results
+df <- data.frame()
+for(a in 1:length(alpha_values)){
+  alpha = alpha_values[a]
+  
+  # Initialize an 'out' data frame to collect results for each alpha
+  out = data.frame()
+  
+  for(i in 1:nullnmc){
+    # Setting the seed for reproducibility
+    set.seed(123 + i - 1)
+    
+    # Generating the time series data
+    glist <- genTSGonepar(n, nperturb, cperturb=0, rmin, rmax, tmax, d_true, alpha)
+    
+    # Calculating Omni for two different periods (2 and 12)
     out2 <- doOmni(glist, nomni=2, dmax, center=center, approx=approx)
-    out12 <- doOmni(glist, 12, dmax,center, approx)
+    out12 <- doOmni(glist, nomni=12, dmax, center=center, approx=approx)
+    
+    # Storing the results in data frames and setting column names
     out.p2 <- data.frame(as.vector(t(out2$tnorm[-c(5,6,7)])), omni="OMNI2", alpha=factor(alpha))
     colnames(out.p2)[1] <- "tnorm"
     out.p12 <- data.frame(as.vector(t(out12$tnorm[-c(5,6,7)])), omni="OMNI12", alpha=factor(alpha))
     colnames(out.p12)[1] <- "tnorm"
+    
+    # Combining the results for OMNI2 and OMNI12
     out.p <- rbind(out.p2, out.p12)
+    
+    # Adding the combined results to the 'out' data frame
+    out <- rbind(out, out.p)
   }
-  c2 <- rep(0,11)
-  c12 <- rep(0,11)
-  a <- rep(0, pvalnmc)
+  
+  # Initialize vectors to hold p-values and counts
+  c2 <- rep(0, 11)
+  c12 <- rep(0, 11)
+  
+  # Calculating p-values and counts for the Omni
   for(i in 1:pvalnmc){
     set.seed(123+nullnmc+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true,alpha)
+    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true, alpha)
     out2 <- doOmni(glist, nomni=2, dmax, center=center, approx=approx)
     out12 <- doOmni(glist, nomni=12, dmax, center=center, approx=approx)
+    
     pvalues2 <- rep(0, (tmax-1))
     pvalues12 <- rep(0, (tmax-1))
     for (j in 1:11) {
@@ -115,41 +168,74 @@ df <- foreach(alpha = c(0,seq(8)/8), .combine='rbind') %dopar% {
     c2 <- c2 + (p.adjust(pvalues2, "BH")<.05)
     c12 <- c12 + (p.adjust(pvalues12, "BH")<.05)
   }
-  df2 <- data.frame(time=factor(m2, levels=m2),power=c2/pvalnmc, se = sqrt( (c2/pvalnmc) * (1 - c2/pvalnmc)/pvalnmc ) ,omni="OMNI2", alpha=factor(alpha))
-  df12 <- data.frame(time=factor(m2, levels=m2),power=c12/pvalnmc, se = sqrt( (c12/pvalnmc) * (1 - c12/pvalnmc)/pvalnmc ),omni="OMNI12", alpha=factor(alpha))
-  df <- rbind(df2, df12)
-  df
+  
+  # Create data frames to store power and standard error for OMNI2 and OMNI12
+  df2 <- data.frame(time=factor(m2, levels=m2), power=c2/pvalnmc, se = sqrt((c2/pvalnmc) * (1 - c2/pvalnmc)/pvalnmc), omni="OMNI2", alpha=factor(alpha))
+  df12 <- data.frame(time=factor(m2, levels=m2), power=c12/pvalnmc, se = sqrt((c12/pvalnmc) * (1 - c12/pvalnmc)/pvalnmc), omni="OMNI12", alpha=factor(alpha))
+  
+  # Combine the data frames for OMNI2 and OMNI12
+  df_temp <- rbind(df2, df12)
+  
+  # Add the combined data frame to the final result 'df'
+  df <- rbind(df, df_temp)
 }
 dfo <- df
 dfo <- dfo  %>% group_by(omni)
 
 #scan stat
 #pairwise scan stat
-df <- foreach(alpha = c(0,seq(8)/8), .combine='rbind') %dopar% {
-  out <- foreach(i = 1:nullnmc, .combine='rbind') %dopar% {
-
-    set.seed(123+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb=0, rmin, rmax, tmax, d_true,alpha)
+# Initialize the final data frame to store results
+df <- data.frame()
+for(a in 1:length(alpha_values)){
+  alpha = alpha_values[a]
+  
+  # Initialize an 'out' data frame to collect results for each alpha
+  out = data.frame()
+  
+  for(i in 1:nullnmc){
+    # Setting the seed for reproducibility
+    set.seed(123 + i - 1)
+    
+    # Generating the time series data
+    glist <- genTSGonepar(n, nperturb, cperturb=0, rmin, rmax, tmax, d_true, alpha)
+    
+    # Applying the 'doScan' function on the generated data
     out2 <- doScan(glist)
     
+    # Creating a data frame to hold the results and setting column names
     out.p <- data.frame(as.vector(t(out2$tnorm[-c(5,6,7)])), type="SCAN", alpha=factor(alpha))
     colnames(out.p)[1] <- "tnorm"
-    out.p 
+    
+    # Adding the results to the 'out' data frame
+    out <- rbind(out, out.p)
   }
-  c2 <- rep(0, 11)#c(0)
+  
+  # Initialize a vector to hold p-values and counts
+  c2 <- rep(0, 11)
+  
+  # Calculating p-values and counts for the SCAN metric
   for(i in 1:pvalnmc){
-    set.seed(123+nullnmc+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true,alpha)
+    set.seed(123 + nullnmc + i - 1)
+    
+    # Generating the time series data
+    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true, alpha)
+    
+    # Applying the 'doScan' function on the generated data
     out2 <- doScan(glist)
-    pvalues2 <- rep(0, (tmax-1))
+    
+    pvalues2 <- rep(0, (tmax - 1))
     for (j in 1:11) {
-      pvalues2[j] <- sum(out2$tnorm[j]<sort(out[which(out$type=="SCAN"&out$alpha==alpha),1]))/(nullnmc*8)
+      pvalues2[j] <- sum(out2$tnorm[j] < sort(out[which(out$type == "SCAN" & out$alpha == alpha), 1])) / (nullnmc * 8)
     }
-    c2 <- c2 + (p.adjust(pvalues2, "BH")<.05)
+    
+    c2 <- c2 + (p.adjust(pvalues2, "BH") < 0.05)
   }
-  df2 <- data.frame(time=factor(m2, levels=m2),power=c2/pvalnmc, se = sqrt( (c2/pvalnmc) * (1 - c2/pvalnmc)/pvalnmc ) ,type="SCAN", alpha=factor(alpha))
-  df <- df2
-  df
+  
+  # Create a data frame to store power and standard error for SCAN
+  df2 <- data.frame(time = factor(m2, levels = m2), power = c2 / pvalnmc, se = sqrt((c2 / pvalnmc) * (1 - c2 / pvalnmc) / pvalnmc), type = "SCAN", alpha = factor(alpha))
+  
+  # Add the results to the final data frame 'df'
+  df <- rbind(df, df2)
 }
 dfs <- df
 dfs <- dfs  %>% group_by(type)
@@ -157,29 +243,63 @@ mycol <- gg_color_hue(2)[2]
 
 #adjacency matrices
 #pairwise adjacency matrices
-df <- foreach(alpha = c(0,seq(8)/8), .combine='rbind') %dopar% {
-  out <- foreach(i = 1:nullnmc, .combine='rbind') %dopar% {
-    set.seed(123+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb=0, rmin, rmax, tmax, d_true,alpha)
+# Initialize an empty data frame to store the final results
+df <- data.frame()
+# Loop through different alpha values;
+for(a in 1:length(alpha_values)){
+  alpha = alpha_values[a]
+  
+  # Initialize a data frame to collect inner loop results for each alpha value
+  out <- data.frame()
+  
+  for(i in 1:nullnmc){
+    # Set the seed for reproducibility
+    set.seed(123 + i - 1)
+    
+    # Generate time series data using the 'genTSGonepar' function
+    glist <- genTSGonepar(n, nperturb, cperturb=0, rmin, rmax, tmax, d_true, alpha)
+    
+    # Run the 'doAdj' function on the generated data
     out2 <- doAdj(glist)
+    
+    # Create a temporary data frame to store the results and set its column names
     out.p <- data.frame(as.vector(t(out2$tnorm[-c(5,6,7)])), Method="DIST", alpha=factor(alpha))
     colnames(out.p)[1] <- "tnorm"
-    out.p 
+    
+    # Append the results to the 'out' data frame
+    out <- rbind(out, out.p)
   }
-  c2 <- rep(0, 11)#c(0)
+  
+  # Initialize a vector to keep track of counts for each time point
+  c2 <- rep(0, 11)
+  
+  # Loop to calculate p-values for each time point
   for(i in 1:pvalnmc){
-    set.seed(123+nullnmc+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true,alpha)
+    # Set the seed for reproducibility
+    set.seed(123 + nullnmc + i - 1)
+    
+    # Generate time series data
+    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true, alpha)
+    
+    # Run the 'doAdj' function on the generated data
     out2 <- doAdj(glist)
+    
     pvalues2 <- rep(0, (tmax-1))
-    for (j in 1:11) {
-      pvalues2[j] <- sum(out2$tnorm[j]<sort(out[which(out$Method=="DIST"&out$alpha==alpha),1]))/(nullnmc*8)
+    
+    # Calculate p-values
+    for(j in 1:11){
+      pvalues2[j] <- sum(out2$tnorm[j] < sort(out[which(out$Method == "DIST" & out$alpha == alpha), 1])) / (nullnmc * 8)
     }
-    c2 <- c2 + (p.adjust(pvalues2, "BH")<.05)
+    
+    # Adjust p-values and count the number of significant results
+    c2 <- c2 + (p.adjust(pvalues2, "BH") < 0.05)
   }
-  df2 <- data.frame(time=factor(m2, levels=m2),power=c2/pvalnmc, se = sqrt( (c2/pvalnmc) * (1 - c2/pvalnmc)/pvalnmc ) ,Method="DIST", alpha=factor(alpha))
-  df <- df2
-  df
+  
+  # Create a data frame to store the results for this alpha value
+  df2 <- data.frame(time=factor(m2, levels=m2), power=c2/pvalnmc, se=sqrt((c2/pvalnmc)*(1 - c2/pvalnmc)/pvalnmc), Method="DIST", alpha=factor(alpha))
+  
+  # Append the results to the final 'df' data frame
+  df <- rbind(df, df2)
 }
 dfadj <- df
 dfadj <- dfadj  %>% group_by(Method)
@@ -535,87 +655,131 @@ pg <- ggplot(df.graph, aes(x=alpha, y=mean, color=Method,group=Method)) +
 
 # mrr
 #pairwise mase
-df <- foreach(alpha = c(0,seq(8)/8), .combine='rbind') %dopar% {
-  out <- foreach(i = 1:nullnmc, .combine='rbind') %dopar% {
-    set.seed(123+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true,alpha)
-    out2 <- doMase(glist, 2, d1,d3,center, approx, py, method3)
-    out12 <- doMase(glist, 12, d1,d3,center, approx, py, method3)
-    rr2 <- matrix(0, n, tmax-1)
-    rr12 <- matrix(0, n, tmax-1)
-    rr2 <- apply(out2$pdist, 2, function(x) rank(1/x) )#matrix(0, n, tmax-1)#rep(0, 11)
-    rr12 <- apply(out12$pdist, 2, function(x) rank(1/x))
-    df.rr2 <- melt(1/(rr2))
+# Run the nested foreach loop using %:% for nesting and .combine to combine the results
+df <- foreach(alpha = c(0, seq(8) / 8), .combine = 'rbind') %:% 
+  foreach(i = 1:nullnmc, .combine = 'rbind') %dopar% {
+    
+    set.seed(123 + i - 1)
+    
+    # Generate time-series data
+    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true, alpha)
+    
+    # Apply MASE methods
+    out2 <- doMase(glist, 2, d1, d3, center, approx, py, method3)
+    out12 <- doMase(glist, 12, d1, d3, center, approx, py, method3)
+    
+    # Rank transformation
+    rr2 <- apply(out2$pdist, 2, function(x) rank(1 / x))
+    rr12 <- apply(out12$pdist, 2, function(x) rank(1 / x))
+    
+    # Melt and rename for MASE(2)
+    df.rr2 <- melt(1 / (rr2))
     names(df.rr2) <- c("vertex", "time", "rr")
-    df.rr2$time <- rep(factor(m2, levels=m2), each = n)
-    df.rr2 <- cbind(df.rr2,mc=i, type="MASE(2)", alpha=factor(alpha))
-    df.rr12 <- melt(1/(rr12))
+    df.rr2$time <- rep(factor(m2, levels = m2), each = n)
+    df.rr2 <- cbind(df.rr2, mc = i, type = "MASE(2)", alpha = factor(alpha))
+    
+    # Melt and rename for MASE(12)
+    df.rr12 <- melt(1 / (rr12))
     names(df.rr12) <- c("vertex", "time", "rr")
-    df.rr12$time <- rep(factor(m2, levels=m2), each = n)
-    df.rr12 <- cbind(df.rr12,mc=i, type="MASE(12)", alpha=factor(alpha))
+    df.rr12$time <- rep(factor(m2, levels = m2), each = n)
+    df.rr12 <- cbind(df.rr12, mc = i, type = "MASE(12)", alpha = factor(alpha))
+    
+    # Combine the results
     df.p <- rbind(df.rr2, df.rr12)
     df.p
   }
-}
 dfmi <- df
 
 #pairwise omni
-df <- foreach(alpha = c(0,seq(8)/8), .combine='rbind') %dopar% {
-  out <- foreach(i = 1:nullnmc, .combine='rbind') %dopar% {
-    set.seed(123+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true,alpha )
+# Run the nested foreach loop using %:% for nesting and .combine to combine the results
+df <- foreach(alpha = c(0, seq(8) / 8), .combine = 'rbind') %:%
+  foreach(i = 1:nullnmc, .combine = 'rbind') %dopar% {
+    
+    set.seed(123 + i - 1)
+    
+    # Generate time-series data
+    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true, alpha)
+    
+    # Apply Omni methods
     out2 <- doOmni(glist, nomni=2, dmax, center=center, approx=approx)
-    out12 <- doOmni(glist, 12, dmax,center, approx)
-    rr2 <- matrix(0, n, tmax-1)#rep(0, 11)
-    rr12 <- matrix(0, n, tmax-1)
-    rr2 <- apply(out2$pdist, 2, function(x) rank(1/x))#matrix(0, n, tmax-1)#rep(0, 11)
-    rr12 <- apply(out12$pdist, 2, function(x) rank(1/x))
-    df.rr2 <- melt(1/rr2)
+    out12 <- doOmni(glist, 12, dmax, center, approx)
+    
+    # Rank transformation
+    rr2 <- apply(out2$pdist, 2, function(x) rank(1 / x))
+    rr12 <- apply(out12$pdist, 2, function(x) rank(1 / x))
+    
+    # Melt and rename for OMNI(2)
+    df.rr2 <- melt(1 / rr2)
     names(df.rr2) <- c("vertex", "time", "rr")
-    df.rr2$time <- rep(factor(m2, levels=m2), each = n)
-    df.rr2 <- cbind(df.rr2,mc=i, type="OMNI(2)", alpha=factor(alpha))
-    df.rr12 <- melt(1/rr12)
+    df.rr2$time <- rep(factor(m2, levels = m2), each = n)
+    df.rr2 <- cbind(df.rr2, mc = i, type = "OMNI(2)", alpha = factor(alpha))
+    
+    # Melt and rename for OMNI(12)
+    df.rr12 <- melt(1 / rr12)
     names(df.rr12) <- c("vertex", "time", "rr")
-    df.rr12$time <- rep(factor(m2, levels=m2), each = n)
-    df.rr12 <- cbind(df.rr12,mc=i, type="OMNI(12)", alpha=factor(alpha))
+    df.rr12$time <- rep(factor(m2, levels = m2), each = n)
+    df.rr12 <- cbind(df.rr12, mc = i, type = "OMNI(12)", alpha = factor(alpha))
+    
+    # Combine the results
     df.p <- rbind(df.rr2, df.rr12)
     df.p
   }
-}
+# Assign the result to dfoi
 dfoi <- df
 
 #pairwise scan
-df <- foreach(alpha = c(0,seq(8)/8), .combine='rbind') %dopar% {
-  out <- foreach(i = 1:nullnmc, .combine='rbind') %dopar% {
-    set.seed(123+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true,alpha )
+# Run the nested foreach loop using %:% for nesting and .combine to combine the results
+df <- foreach(alpha = c(0, seq(8) / 8), .combine = 'rbind') %:%
+  foreach(i = 1:nullnmc, .combine = 'rbind') %dopar% {
+    
+    # Set seed
+    set.seed(123 + i - 1)
+    
+    # Generate time-series data
+    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true, alpha)
+    
+    # Apply Scan method
     out2 <- doScan(glist)
-    rr2 <- matrix(0, n, tmax-1)
-    rr2 <- apply(out2$pdist, 2, function(x) rank(1/x))
-    df.rr2 <- melt(1/rr2)
+    
+    # Rank transformation
+    rr2 <- apply(out2$pdist, 2, function(x) rank(1 / x))
+    
+    # Melt and rename
+    df.rr2 <- melt(1 / rr2)
     names(df.rr2) <- c("vertex", "time", "rr")
-    df.rr2$time <- rep(factor(m2, levels=m2), each = n)
-    df.p <- cbind(df.rr2,mc=i, type="SCAN", alpha=factor(alpha))
+    df.rr2$time <- rep(factor(m2, levels = m2), each = n)
+    
+    # Combine the results
+    df.p <- cbind(df.rr2, mc = i, type = "SCAN", alpha = factor(alpha))
     df.p
   }
-}
 dfsi <- df
 
 #pairwise Adj
-df <- foreach(alpha = c(0,seq(8)/8), .combine='rbind') %dopar% {
-  out <- foreach(i = 1:nullnmc, .combine='rbind') %dopar% {
-    set.seed(123+i-1)
-    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true,alpha )
+df <- foreach(alpha = c(0, seq(8) / 8), .combine = 'rbind') %:% 
+  foreach(i = 1:nullnmc, .combine = 'rbind') %dopar% {
+    
+    # Set seed for reproducibility
+    set.seed(123 + i - 1)
+    
+    # Generate time-series graph
+    glist <- genTSGonepar(n, nperturb, cperturb, rmin, rmax, tmax, d_true, alpha)
+    
+    # Apply Adj method
     out2 <- doAdj(glist)
-    rr2 <- matrix(0, n, tmax-1)
-    rr2 <- apply(out2$pdist, 2, function(x) rank(1/x))
-    df.rr2 <- melt(1/rr2)
+    
+    # Rank transformation
+    rr2 <- apply(out2$pdist, 2, function(x) rank(1 / x))
+    
+    # Melt and rename
+    df.rr2 <- melt(1 / rr2)
     names(df.rr2) <- c("vertex", "time", "rr")
-    df.rr2$time <- rep(factor(m2, levels=m2), each = n)
-    df.p <- cbind(df.rr2,mc=i, type="DIST", alpha=factor(alpha))
+    df.rr2$time <- rep(factor(m2, levels = m2), each = n)
+    
+    # Combine the results
+    df.p <- cbind(df.rr2, mc = i, type = "DIST", alpha = factor(alpha))
     df.p
   }
-}
 dfadji <- df
 
 
@@ -709,17 +873,9 @@ pv <- ggplot(df.vertex, aes(x=alpha, y=mean, color=Method,group=Method)) +
   theme(plot.title = element_text(size=10, face = 'bold'), legend.position = "none",axis.title = element_text(face="bold"),axis.text = element_text(face="bold"))  + ylab("")#+
 # theme(plot.title = element_text(size=10, face = 'bold'), legend.text = element_text(size=8, face='bold'),axis.title = element_text(face="bold"),axis.text = element_text(face="bold"))  + ylab("")#+
 
-# # Specify the directory where you want to save the file
-# output_dir <- paste0(dirname(current_script_path), "mmsbm_", format(Sys.time(), "%Y-%m-%d"))
-# 
-# # Check if the directory exists, if not, create it
-# if (!dir.exists(output_dir)) {
-#   dir.create(output_dir)
-# }
-
 
 # Figure 5
 grid.arrange(pg, pv, nrow=1, widths=c(5,4))
-png(paste0(output_dir, paste0("/comb","_",format(Sys.time(), "%Y_%m_%d")),".png"), width = 9, height = 4, units="in", res=400)
+png(paste0("comb","_",format(Sys.time(), "%Y_%m_%d.png")), width = 9, height = 4, units="in", res=400)
 grid.arrange(pg, pv, nrow=1, widths=c(5,4))
 dev.off()
