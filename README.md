@@ -13,7 +13,7 @@ multiple adjacency spectral embedding (MASE). We demonstrate that our method is 
 
 ## Results
 
-| Figure(s) and table(s) | R file | HTML file |
+| Figure(s) and table(s) | R file | Output HTML file |
 |:--------- |:-----------|:-----------|
 | Figure 1  | figure1.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure1.html |
 | Figure 2   | figure2.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure2.html |
@@ -36,7 +36,8 @@ multiple adjacency spectral embedding (MASE). We demonstrate that our method is 
 ## Data
 
 ### Enron
-https://www.cis.jhu.edu/~parky/Enron/
+The data file `enron.csv` is in the `Data` folder.  
+Please see https://www.cis.jhu.edu/~parky/Enron/ for the details (`execs.email.linesnum` is the one used in the manuscript.).
 
 ### MSB
 The commercial search engine data used in Section 6 are available from the authors upon reasonable request and with the permission of Microsoft Corporation.
