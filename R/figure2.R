@@ -1,3 +1,4 @@
+# R version 4.3.1
 # Install and load the packages if not already installed
 packages <- c("igraph", "gtools", "tidyverse", "irlba", "doParallel", 
               "qcc", "latex2exp", "gridExtra", "reshape2", "rstudioapi")
