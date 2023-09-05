@@ -1,3 +1,4 @@
+# R version 4.3.1
 # Install and load the packages if not already installed
 packages <- c("gtools", "rARPACK", "metafolio", "latex2exp", "qcc", "rstudioapi",
               "doParallel", "irlba", "pdp", "reshape2", "tidyverse", "invgamma",
