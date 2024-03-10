@@ -19,9 +19,9 @@ multiple adjacency spectral embedding (MASE). We demonstrate that our method is 
 | Figure 2   | figure2.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure2.html |
 | Figure 3    | figure3.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure3.html |
 | Figure 4   | figure4.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure4.html |
-| Figure 5    | figure5.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure5.html |
-| Figures 6, 8, 9, 10, 11, 12, 13 | figure6_8_9_10_11_12_13.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure6_8_9_10_11_12_13.html |
-| Figures 7, 14, 15, 16, 17 and tables 1, 2, 3 | figure7_14_15_16_17_table1_table2.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure7_14_15_16_17_table1_table2.html |
+| Figure 5, 8 | figure5_8.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure5_8.html |
+| Figures 6, 8, 9, 10, 11, 12, 13, 14 | figure6_9_10_11_12_13_14_sqrt.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure6_9_10_11_12_13_14_sqrt.html |
+| Figures 7, 15, 16, 17, 18, 19 and tables 1, 2, 3 | figure7_15_16_17_18_19_table1_table2_sqrt.R | https://www.cis.jhu.edu/~parky/AnomalyDetection/figure7_15_16_17_18_19_table1_table2_sqrt.html |
 
 
 ## Code
