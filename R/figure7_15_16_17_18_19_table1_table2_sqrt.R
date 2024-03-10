@@ -41,17 +41,19 @@ if (!dir.exists(output_dir)) {
 }
 
 # Specify attribute for edge weights
-attrweigth = "weight"
+attr_weight = "weight"
 
 # Set embedding dimension (based on the second elbow method for Adjacency Spectral Embedding)
 d = 20 
+d.max <- "sqrt"
+elbow_graph <- 2
 diag.augment = TRUE
 
 # Set seed for reproducibility
 set.seed(124)
 
 # Compute a clustering based on adjacency spectral embedding and Gaussian mixture modeling
-result <- mclust::Mclust( ase( get.adjacency(ptr(gip[[6]]), attr=attrweigth )  , d = d, diag.augment = diag.augment, elbow = elbow_graph))
+result <- mclust::Mclust( ase( get.adjacency(ptr(gip[[6]]), attr=attr_weight )  , d = d, diag.augment = diag.augment, elbow = elbow_graph))
 
 # Get the number of clusters
 n_cluster <- result$G
@@ -61,7 +63,7 @@ middle.max.inx <- which(result$classification==(6+1))
 table(result$classification)
 
 # Adjust adjacency matrix for the specific community group
-adj <- as(get.adjacency(gip[[6]], attr = attrweigth), "sparseMatrix")
+adj <- as(get.adjacency(gip[[6]], attr = attr_weight), "sparseMatrix")
 adj[middle.max.inx,middle.max.inx] <- (adj[middle.max.inx,middle.max.inx] + 1)
 
 # Update the graph with the adjusted adjacency matrix
@@ -84,31 +86,53 @@ n3=running(tvec, width=2,fun = function(x) paste0(as.character(month.abb[x[1]]),
 # 
 # # Combine all x-axis labels
 minx <- as.vector(c(n1,"Dec:Jan",n3))
+
+# tempp<-get_graph_qcc(gip, seq(12),latpos.list=latpos.list.wrapped,d.max=d.max, elbow_graph=elbow_graph, minx=minx,realdata_wrapper=realdata_doMase_wrapper,embed_span=2,xlab="time points", title="MASE(2)",t_window_size=t_window_size, return_plot=FALSE)
+
 # 
 # Compute latent positions for each graph in gip
-latpos.list.wrapped <- realdata_latpos_list_wrapper(gip, fixedd=64,graph_attr="weight")
+latpos.list.wrapped <- realdata_latpos_list_wrapper(gip, d.max=d.max, elbow_graph=elbow_graph)
 
 # Extracting MASE(2) vertex quality control chart data and creating a zoomed plot of it
-c1m2v <- get_vertex_qcc(gip, seq(12), middle.max.inx=middle.max.inx,latpos.list=latpos.list.wrapped, fixedd=NULL, elbow_graph=2, realdata_wrapper=realdata_doMase_wrapper3,embed_span=2,xlab="time points", title="MASE(2)", minx=minx,t_window_size=t_window_size, return_plot=FALSE)
+c1m2v <- get_vertex_qcc(gip, seq(12), middle.max.inx=middle.max.inx,latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doMase_wrapper3,embed_span=2,xlab="time points", title="MASE(2)", minx=minx,t_window_size=t_window_size, return_plot=FALSE)
 msr_cc_vertex_m2 <- plot.qcc.vertex.zoom(c1m2v, add.stats = FALSE, chart.all = TRUE, s=s,minx = minx,
                                          label.limits = c("LCL ", "UCL"), title=paste("Control Chart","MASE(2)"), xlab="time points",m2=seq(vcount(gip[[1]])), ylab="y",
                                          axes.las = 0, digits = getOption("digits"),artpoints = middle.max.inx,
                                          restore.par = FALSE)
 msr_cc_vertex_m2 <- msr_cc_vertex_m2+ scale_y_log10()
 
+for (i in seq(length(msr_cc_vertex_m2))) {
+  print(length((c1m2v[[i]])$violations$beyond.limits))  
+}
+
+
+# Extracting MASE(12) vertex quality control chart data and creating a zoomed plot of it
+c1m12v <- get_vertex_qcc(gip, seq(12), middle.max.inx=middle.max.inx,latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doMase_wrapper,embed_span=12,xlab="time points", title="MASE(12)", minx=minx,t_window_size=t_window_size, return_plot=FALSE)
+msr_cc_vertex_m12 <- plot.qcc.vertex(c1m12v, add.stats = FALSE, chart.all = TRUE, s=s,minx = minx,
+                                         label.limits = c("LCL ", "UCL"), title=paste("Control Chart","MASE(12)"), xlab="time points",m2=seq(vcount(gip[[1]])), ylab="y",
+                                         axes.las = 0, digits = getOption("digits"),artpoints = middle.max.inx,
+                                         restore.par = FALSE)
+msr_cc_vertex_m12 <- msr_cc_vertex_m12+ scale_y_log10()
+
+# Figure 19
+msr_cc_vertex_m12
+# png("msrcc_vertex_july3123.png", width = 8, height = 8, units="in", res=400)
+png(paste0(output_dir, paste0("/msrcc_MASE(12)_vertex_t_window_size",as.character(t_window_size),"_",format(Sys.time(), "%Y_%m_%d")),".png"), width = 8, height = 8, units="in", res=400)
+msr_cc_vertex_m12
+dev.off()
 
 # Extracting graph quality control chart data for various methods
-msr_pm2 <- get_graph_qcc(gip, seq(12),latpos.list=latpos.list.wrapped,fixedd=NULL, elbow_graph=2, minx=minx,realdata_wrapper=realdata_doMase_wrapper,embed_span=2,xlab="time points", title="MASE(2)",t_window_size=t_window_size, return_plot=FALSE)
-msr_pm12 <- get_graph_qcc(gip, seq(12), latpos.list=latpos.list.wrapped,fixedd=NULL, elbow_graph=2, minx=minx,realdata_wrapper=realdata_doMase_wrapper,embed_span=12,xlab="time points", title="MASE(12)",t_window_size=t_window_size, return_plot=FALSE)
+msr_pm2 <- get_graph_qcc(gip, seq(12),latpos.list=latpos.list.wrapped,d.max=d.max, elbow_graph=elbow_graph, minx=minx,realdata_wrapper=realdata_doMase_wrapper,embed_span=2,xlab="time points", title="MASE(2)",t_window_size=t_window_size, return_plot=FALSE)
+msr_pm12 <- get_graph_qcc(gip, seq(12), latpos.list=latpos.list.wrapped,d.max=d.max, elbow_graph=elbow_graph, minx=minx,realdata_wrapper=realdata_doMase_wrapper,embed_span=12,xlab="time points", title="MASE(12)",t_window_size=t_window_size, return_plot=FALSE)
 
-# Table 3
-print('number of deviations for MASE(12):')
-print(round((msr_pm12$statistics-msr_pm12$center)/msr_pm12$std.dev,1))
-print(msr_pm12$violations$beyond.limits)
-msr_pm12$violations$beyond.limits <- msr_pm12$violations$beyond.limits[2:3]
+# # Table 3
+# print('number of deviations for MASE(12):')
+# print(round((msr_pm12$statistics-msr_pm12$center)/msr_pm12$std.dev,1))
+# print(msr_pm12$violations$beyond.limits)
+# msr_pm12$violations$beyond.limits <- msr_pm12$violations$beyond.limits[2:3]
 
-msr_po2 <- get_graph_qcc(gip, seq(12), fixedd=round(sqrt(vcount(gip[[1]])*2)), elbow_graph=2, minx=minx,realdata_wrapper=realdata_doOmni2_wrapper,embed_span=2,xlab="time points", title="OMNI(2)",t_window_size=t_window_size, return_plot=FALSE)
-msr_ps <- get_graph_qcc(gip, seq(12), fixedd=NULL, elbow_graph=2, minx=minx,realdata_wrapper=realdata_doScan_wrapper,embed_span=2,xlab="time points", title="SCAN",t_window_size=t_window_size, return_plot=FALSE)
+msr_po2 <- get_graph_qcc(gip, seq(12), d.max=d.max, elbow_graph=elbow_graph, minx=minx,realdata_wrapper=realdata_doOmni2_wrapper,embed_span=2,xlab="time points", title="OMNI(2)",t_window_size=t_window_size, return_plot=FALSE)
+msr_ps <- get_graph_qcc(gip, seq(12), d.max=d.max, elbow_graph=elbow_graph, minx=minx,realdata_wrapper=realdata_doScan_wrapper,embed_span=2,xlab="time points", title="SCAN",t_window_size=t_window_size, return_plot=FALSE)
 
 df <- data.frame(time=seq(length(msr_pm2$statistics)), y= msr_pm2$statistics,ucl=msr_pm2$limits[,2],center=msr_pm2$center,lim=replace(rep(0,length(msr_pm2$statistics)),msr_pm2$violations$beyond.limits,1),run=replace(rep(0,length(msr_pm2$statistics)),msr_pm2$violations$violating.runs,1), Method="MASE(2)")
 df <- rbind(df, data.frame(time=seq(length(msr_pm12$statistics)), y= msr_pm12$statistics,ucl=msr_pm12$limits[,2],center=msr_pm12$center,lim=replace(rep(0,length(msr_pm12$statistics)),msr_pm12$violations$beyond.limits,1),run=replace(rep(0,length(msr_pm12$statistics)),msr_pm12$violations$violating.runs,1), Method="MASE(12)"))
@@ -135,16 +159,23 @@ grid.arrange(p,msr_cc_vertex_m2,nrow=1, widths=c(4,3))
 dev.off()
 
 # Compute test stats for various methods (Mase, Omni, Scan) for different methods with different embedding spans
-out2wrapper <- realdata_doMase_wrapper(gip, latpos.list=latpos.list.wrapped, fixedd=NULL, elbow_graph=2, embed_span=2, graph_attr="weight")
-out12wrapper <- realdata_doMase_wrapper(gip, latpos.list=latpos.list.wrapped, fixedd=NULL, elbow_graph=2, embed_span=12, graph_attr="weight")
-out2omniwrapper <- realdata_doOmni2_wrapper(gip, fixedd=round(sqrt(vcount(gip[[1]])*2)), elbow_graph=2, graph_attr="weight")
-outscanwrapper <- realdata_doScan_wrapper(gip, fixedd=NULL, graph_attr="weight")
+out2wrapper <- realdata_doMase_wrapper(gip, latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, embed_span=2)
+out12wrapper <- realdata_doMase_wrapper(gip, latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, embed_span=12)
+out2omniwrapper <- realdata_doOmni2_wrapper(gip, d.max=d.max, elbow_graph=elbow_graph)
+outscanwrapper <- realdata_doScan_wrapper(gip, d.max=d.max)
 
 # Compute adjusted p-values plot for various methods
-adj_pval_pm2<-get_graph_adj_pvals(out2wrapper, t_list,latpos.list=latpos.list.wrapped, bootstrap_d=NULL, elbow_graph=2, realdata_wrapper=realdata_doMase_wrapper, embed_span=2, xlab="time (yy/mm)", title="MASE(2)",minx=minx, t_window_size=t_window_size, method="BH", return_plot=TRUE, bootstrap_verbose=FALSE)
-adj_pval_pm12<-get_graph_adj_pvals(out12wrapper, t_list,latpos.list=latpos.list.wrapped, bootstrap_d=NULL, elbow_graph=2, realdata_wrapper=realdata_doMase_wrapper, embed_span=12, xlab="time (yy/mm)", title="MASE(12)",minx=minx, t_window_size=t_window_size, method="BH", return_plot=TRUE, bootstrap_verbose=FALSE)
-adj_pval_po2<-get_graph_adj_pvals(out2omniwrapper, t_list,latpos.list=latpos.list.wrapped, bootstrap_d=NULL, elbow_graph=2, realdata_wrapper=realdata_doOmni2_wrapper, embed_span=2, xlab="time (yy/mm)", title="OMNI(2)",minx=minx, t_window_size=t_window_size, method="BH", return_plot=TRUE, bootstrap_verbose=FALSE)
-adj_pval_ps2<-get_graph_adj_pvals(outscanwrapper, t_list,latpos.list=latpos.list.wrapped, bootstrap_d=NULL, elbow_graph=2, realdata_wrapper=realdata_doScan_wrapper, embed_span=2, xlab="time (yy/mm)", title="SCAN",minx=minx, t_window_size=t_window_size, method="BH", return_plot=TRUE, bootstrap_verbose=FALSE)
+
+# adj_pval_pm2<-get_graph_adj_pvals(out2wrapper, t_list,latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doMase_wrapper, embed_span=2, xlab="time (yy/mm)", title="MASE(2)",minx=minx, t_window_size=t_window_size, return_plot=TRUE, number_bootstrap=1)
+# adj_pval_pm12<-get_graph_adj_pvals(out12wrapper, t_list,latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doMase_wrapper, embed_span=12, xlab="time (yy/mm)", title="MASE(12)",minx=minx, t_window_size=t_window_size, return_plot=TRUE, number_bootstrap=1)
+# adj_pval_po2<-get_graph_adj_pvals(out2omniwrapper, t_list,latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doOmni2_wrapper, embed_span=2, xlab="time (yy/mm)", title="OMNI(2)",minx=minx, t_window_size=t_window_size, return_plot=TRUE, number_bootstrap=1)
+# adj_pval_ps2<-get_graph_adj_pvals(outscanwrapper, t_list,latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doScan_wrapper, embed_span=2, xlab="time (yy/mm)", title="SCAN",minx=minx, t_window_size=t_window_size, return_plot=TRUE, number_bootstrap=1)
+
+
+adj_pval_pm2<-get_graph_adj_pvals(out2wrapper, t_list,latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doMase_wrapper, embed_span=2, xlab="time (yy/mm)", title="MASE(2)",minx=minx, t_window_size=t_window_size, return_plot=TRUE, number_bootstrap=0)
+adj_pval_pm12<-get_graph_adj_pvals(out12wrapper, t_list,latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doMase_wrapper, embed_span=12, xlab="time (yy/mm)", title="MASE(12)",minx=minx, t_window_size=t_window_size, return_plot=TRUE, number_bootstrap=0)
+adj_pval_po2<-get_graph_adj_pvals(out2omniwrapper, t_list,latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doOmni2_wrapper, embed_span=2, xlab="time (yy/mm)", title="OMNI(2)",minx=minx, t_window_size=t_window_size, return_plot=TRUE, number_bootstrap=0)
+adj_pval_ps2<-get_graph_adj_pvals(outscanwrapper, t_list,latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doScan_wrapper, embed_span=2, xlab="time (yy/mm)", title="SCAN",minx=minx, t_window_size=t_window_size, return_plot=TRUE, number_bootstrap=0)
 
 # Figure 14
 grid.arrange(adj_pval_pm2,adj_pval_pm12,adj_pval_po2,adj_pval_ps2, nrow=2, heights=c(4,4))
@@ -162,7 +193,7 @@ aip <- lapply(gip, function(g) as_adjacency_matrix(g, attr = "weight", sparse = 
 temp.anomalous.time.inx <- 2
 
 # Computing latent positions list for the provided range in gip and latpos.list.wrapped using jrdpg.latent method
-temp.latpos.list <- jrdpg.latent(aip[11:(12)], latpos.list = latpos.list.wrapped[11:(12)], d1=NA,d2=NA, d3=NA, center=FALSE, python=FALSE, SVD=3)$Xhat
+temp.latpos.list <- jrdpg.latent(aip[11:(12)], latpos.list = latpos.list.wrapped[11:(12)], dSVD=NA, d.max=d.max, approx=FALSE,  center=FALSE, plot=FALSE, latent.form=3)
 
 # Initializing temporary vector to identify anomalous values
 temp <- rep(FALSE, n)
@@ -202,7 +233,7 @@ pvccm2= plot.qcc.vertex(c1m2v, add.stats = FALSE, chart.all = TRUE, s=s,
                         axes.las = 0, digits = getOption("digits"),artpoints = middle.max.inx,
                         restore.par = FALSE)
 
-# Figure 16
+# Figure 17
 pvccm2+ scale_y_log10()
 # png("msrcc_vertex_july3123.png", width = 8, height = 8, units="in", res=400)
 png(paste0(output_dir, paste0("/msrcc_vertex_t_window_size",as.character(t_window_size),"_",format(Sys.time(), "%Y_%m_%d")),".png"), width = 8, height = 8, units="in", res=400)
@@ -210,7 +241,7 @@ pvccm2+ scale_y_log10()
 # pmv
 dev.off()
 
-# Figure 17
+# Figure 18
 tmax <- length(gip)
 n <- length(V(gip[[1]]))
 num.edge <- matrix(0,length(V(gip[[1]])),tmax-s+1 )
@@ -278,7 +309,7 @@ for (scenario_inx in seq(4)) {#seq(4)) {
   i <- 0
   for (injected_time in injected_times) {
     i = i + 1
-    adj <- as(get.adjacency(gip2[[injected_time]], attr = attrweigth), "sparseMatrix")
+    adj <- as(get.adjacency(gip2[[injected_time]], attr = attr_weight), "sparseMatrix")
     middle.max.inx <- injected_vertices_indices[[scenario_inx]][[i]]
     adj[middle.max.inx,middle.max.inx] <- (adj[middle.max.inx,middle.max.inx] + 9)
     gip2[[injected_time]] <- graph.adjacency(adj,mode = "undirected", weighted = TRUE,diag = FALSE)
@@ -308,33 +339,33 @@ for (scenario_inx in seq(4)) {#seq(4)) {
   # Loop over each graph in gip2
   for (i in 1:length(gip2)) {
     # Perform individual ASE
-    latpos <- ase( get.adjacency(gip2[[i]], attr=attrweigth )  , d = NA, diag.augment = diag.augment, elbow = 2)
+    latpos <- ase( get.adjacency(gip2[[i]], attr=attr_weight )  , d = NA, diag.augment = diag.augment, elbow = 2, plot=FALSE)
     # Append the latent positions to the list
     latpos.list.wrapped <- c(latpos.list.wrapped, list(latpos))
   }
 
   # Calculate the test stats based on MASE embeddings for the graph using a wrapper function
-  out2wrapper <- realdata_doMase_wrapper(gip2, latpos.list=latpos.list.wrapped, fixedd=NULL, elbow_graph=2, embed_span=2, graph_attr="weight")
-  out12wrapper <- realdata_doMase_wrapper(gip2, latpos.list=latpos.list.wrapped, fixedd=NULL, elbow_graph=2, embed_span=12, graph_attr="weight")
+  out2wrapper <- realdata_doMase_wrapper(gip2, latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, embed_span=2)
+  out12wrapper <- realdata_doMase_wrapper(gip2, latpos.list=latpos.list.wrapped, d.max=d.max, elbow_graph=elbow_graph, embed_span=12)
   # Calculate the test stats based on Omni embeddings for the graph using another wrapper function
-  out2omniwrapper <- realdata_doOmni2_wrapper(gip2, fixedd=round(sqrt(vcount(gip2[[1]])*2)), elbow_graph=2, graph_attr="weight")
+  out2omniwrapper <- realdata_doOmni2_wrapper(gip2, d.max=d.max, elbow_graph=elbow_graph)
 
   # Get adjusted p-values based on different embeddings test stats and spans
-  adj_pval_m2<-get_graph_adj_pvals(out2wrapper, t_list,latpos.list=NULL, bootstrap_d=NULL, elbow_graph=2, realdata_wrapper=realdata_doMase_wrapper, embed_span=2, xlab="time (yy/mm)", title="MASE(2)",minx=minx, t_window_size=t_window_size, method="BH", return_plot=FALSE, bootstrap_verbose=FALSE)
-  adj_pval_m12<-get_graph_adj_pvals(out12wrapper, t_list,latpos.list=NULL, bootstrap_d=NULL, elbow_graph=2, realdata_wrapper=realdata_doMase_wrapper, embed_span=12, xlab="time (yy/mm)", title="MASE(12)",minx=minx, t_window_size=t_window_size, method="BH", return_plot=FALSE, bootstrap_verbose=FALSE)
-  adj_pval_o2<-get_graph_adj_pvals(out2omniwrapper, t_list,latpos.list=NULL, bootstrap_d=NULL, elbow_graph=2, realdata_wrapper=realdata_doOmni2_wrapper, embed_span=2, xlab="time (yy/mm)", title="OMNI(2)",minx=minx, t_window_size=t_window_size, method="BH", return_plot=FALSE, bootstrap_verbose=FALSE)
+  adj_pval_m2<-get_graph_adj_pvals(out2wrapper, t_list,latpos.list=NULL, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doMase_wrapper, embed_span=2, xlab="time (yy/mm)", title="MASE(2)",minx=minx, t_window_size=t_window_size, return_plot=FALSE, number_bootstrap=0)
+  adj_pval_m12<-get_graph_adj_pvals(out12wrapper, t_list,latpos.list=NULL, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doMase_wrapper, embed_span=12, xlab="time (yy/mm)", title="MASE(12)",minx=minx, t_window_size=t_window_size, return_plot=FALSE, number_bootstrap=0)
+  adj_pval_o2<-get_graph_adj_pvals(out2omniwrapper, t_list,latpos.list=NULL, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doOmni2_wrapper, embed_span=2, xlab="time (yy/mm)", title="OMNI(2)",minx=minx, t_window_size=t_window_size, return_plot=FALSE, number_bootstrap=0)
 
   # Compute quality control charts based on different embeddings test stats and spans
-  c1m2 <- get_graph_qcc(gip2, seq(12),latpos.list=latpos.list.wrapped,fixedd=NULL, elbow_graph=2, minx=minx,realdata_wrapper=realdata_doMase_wrapper,embed_span=2,xlab="time points", title="MASE(2)",t_window_size=t_window_size, return_plot=FALSE)
-  c1m12 <- get_graph_qcc(gip2, seq(12), latpos.list=latpos.list.wrapped,fixedd=NULL, elbow_graph=2, minx=minx,realdata_wrapper=realdata_doMase_wrapper,embed_span=12,xlab="time points", title="MASE(12)",t_window_size=t_window_size, return_plot=FALSE)
-  c1o2 <- get_graph_qcc(gip2, seq(12), fixedd=round(sqrt(vcount(gip2[[1]])*2)), elbow_graph=2, minx=minx,realdata_wrapper=realdata_doOmni2_wrapper,embed_span=2,xlab="time points", title="OMNI(2)",t_window_size=t_window_size, return_plot=FALSE)
+  c1m2 <- get_graph_qcc(gip2, seq(12),latpos.list=latpos.list.wrapped,d.max=d.max, elbow_graph=elbow_graph, minx=minx,realdata_wrapper=realdata_doMase_wrapper,embed_span=2,xlab="time points", title="MASE(2)",t_window_size=t_window_size, return_plot=FALSE)
+  c1m12 <- get_graph_qcc(gip2, seq(12), latpos.list=latpos.list.wrapped,d.max=d.max, elbow_graph=elbow_graph, minx=minx,realdata_wrapper=realdata_doMase_wrapper,embed_span=12,xlab="time points", title="MASE(12)",t_window_size=t_window_size, return_plot=FALSE)
+  c1o2 <- get_graph_qcc(gip2, seq(12), d.max=d.max, elbow_graph=elbow_graph, minx=minx,realdata_wrapper=realdata_doOmni2_wrapper,embed_span=2,xlab="time points", title="OMNI(2)",t_window_size=t_window_size, return_plot=FALSE)
 
   # Attempt to run SCAN method, capturing any errors
   err_message <- try({
 
-    outscanwrapper <- realdata_doScan_wrapper(gip2, fixedd=NULL, graph_attr="weight")
-    adj_pval_s2<-get_graph_adj_pvals(outscanwrapper, t_list,latpos.list=NULL, bootstrap_d=NULL, elbow_graph=2, realdata_wrapper=realdata_doScan_wrapper, embed_span=2, xlab="time (yy/mm)", title="SCAN",minx=minx, t_window_size=t_window_size, method="BH", return_plot=FALSE, bootstrap_verbose=FALSE)
-    c1s2 <- get_graph_qcc(gip2, seq(12), fixedd=NULL, elbow_graph=2, minx=minx,realdata_wrapper=realdata_doScan_wrapper,embed_span=2,xlab="time points", title="SCAN",t_window_size=t_window_size, return_plot=FALSE)
+    outscanwrapper <- realdata_doScan_wrapper(gip2, d.max=d.max)
+    adj_pval_s2<-get_graph_adj_pvals(outscanwrapper, t_list,latpos.list=NULL, d.max=d.max, elbow_graph=elbow_graph, realdata_wrapper=realdata_doScan_wrapper, embed_span=2, xlab="time (yy/mm)", title="SCAN",minx=minx, t_window_size=t_window_size, return_plot=FALSE, number_bootstrap=0)
+    c1s2 <- get_graph_qcc(gip2, seq(12), d.max=d.max, elbow_graph=elbow_graph, minx=minx,realdata_wrapper=realdata_doScan_wrapper,embed_span=2,xlab="time points", title="SCAN",t_window_size=t_window_size, return_plot=FALSE)
     'no error'
     # return('no error') # Return this message if no errors occur
   }, silent=FALSE)

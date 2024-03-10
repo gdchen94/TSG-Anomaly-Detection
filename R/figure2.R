@@ -21,13 +21,16 @@ source("../Utils/utils.R")
 # registerDoParallel(detectCores()-1) ## uncomment this to use multicore
 
 #mase
-py = FALSE
 method3 = 2
-dSVD=2
-dASE=1
+dSVD=NA
+dSVD12=NA
+dASE=NA
 nmc <- 1
-approx <- TRUE
+d.max <- "sqrt"#"full"
+approx <- FALSE
 center <- FALSE
+elbow_graph <- 1
+plot <- FALSE
 
 set.seed(59)
 tmax <- 12
@@ -45,16 +48,17 @@ std2 <- rep(1,(tmax-1))
 mean12 <- rep(1, (tmax-1))
 std12 <- rep(1,(tmax-1))
 for (w in 1:(tmax-1)) {
-  out <- foreach(i = 1:nmc, .combine='rbind') %dopar% {
+  out <- c()
+  for(i in 1:nmc) {
     set.seed(123+i-1)
     tempglist <- conchartgenTSG(n, nperturb, cperturb, rmin, rmax, tmax+10)
     glist <- tempglist[(w:(w+10))]
-    out2 <- doMase(glist, 2, dSVD,dASE,center, approx, py, method3)
-    out12 <- doMase(glist, 12, 6,dASE, center, approx, py, method3)
+    out2 <- doMase(glist, nmase=2, dSVD=dSVD, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
+    out12 <- doMase(glist, nmase=tmax, dSVD=dSVD12, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
     df.norm2 <- data.frame(time=factor(m2[1:(tmax-2)], levels=m2[1:(tmax-2)]), norm=out2$tnorm, mc=i, mase="mase2")
     df.norm12 <- data.frame(time=factor(m2[1:(tmax-2)], levels=m2[1:(tmax-2)]), norm=out12$tnorm, mc=i, mase="mase12")
     df.norm <- rbind(df.norm2, df.norm12)
-    df.norm
+    out <- rbind(out, df.norm)
   }
   df <- out  %>% filter(mase=="mase2")
   df <- df[,c(-1,-3,-4)]
@@ -68,15 +72,16 @@ for (w in 1:(tmax-1)) {
   std12[w] <- sd.xbar.one(mase12, rep(nmc,tmax-2), "MR")#sd.xbar(mase12, rep(nmc,tmax-2), "MR")
 }
 
-out <- foreach(i = 1:nmc, .combine='rbind') %dopar% {
+out <- c()
+  for(i in 1:nmc) {
   set.seed(123+i-1)
   glist <- genTSG(n, nperturb, cperturb, rmin, rmax, tmax)
-  out2 <- doMase(glist, 2, dSVD,dASE,center, approx, py, method3)
-  out12 <- doMase(glist, 12, 6,dASE, center, approx, py, method3)
+  out2 <- doMase(glist, nmase=2, dSVD=dSVD, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
+  out12 <- doMase(glist, nmase=tmax, dSVD=dSVD12, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
   df.norm2 <- data.frame(time=factor(m2, levels=m2), norm=out2$tnorm, mc=i, mase="mase2")
   df.norm12 <- data.frame(time=factor(m2, levels=m2), norm=out12$tnorm, mc=i, mase="mase12")
   df.norm <- rbind(df.norm2, df.norm12)
-  df.norm
+  out <- rbind(out, df.norm)
 }
 df <- out  %>% filter(mase=="mase2")
 df <- df[,c(-1,-3,-4)]
@@ -113,12 +118,13 @@ std2 <- rep(1,(tmax-1))
 mean12 <- rep(1, (tmax-1))
 std12 <- rep(1,(tmax-1))
 for (w in 1:(tmax-1)) {
-  out <- foreach(i = 1:nmc, .combine='rbind') %dopar% {
+  out <- c()
+  for(i in 1:nmc) {
     set.seed(123+i-1)
     tempglist <- conchartgenTSG(n, nperturb, cperturb, rmin, rmax, tmax+10)
     glist <- tempglist[(w:(w+10))]
-    out2 <- doMase(glist, 2, dSVD,dASE,center, approx, py, method3)
-    out12 <- doMase(glist, tmax, 6,dASE,center, approx, py, method3)
+    out2 <- doMase(glist, nmase=2, dSVD=dSVD, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
+    out12 <- doMase(glist, nmase=tmax, dSVD=dSVD12, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
     df.dist2 <- melt(out2$pdist)
     names(df.dist2) <- c("vertex", "time", "pdist")
     df.dist2$time <- rep(factor(m2[1:(tmax-2)], levels=m2[1:(tmax-2)]), each = n)
@@ -128,6 +134,7 @@ for (w in 1:(tmax-1)) {
     df.dist12$time <- rep(factor(m2[1:(tmax-2)], levels=m2[1:(tmax-2)]), each = n)
     df.dist12 <- cbind(df.dist12,mc=i, mase="mase12")
     df.dist <- rbind(df.dist2,df.dist12)
+    out <- rbind(out, df.dist)
   }
   df <- out  %>% filter(mase=="mase2")
   df <- df[,c(-4,-5)]
@@ -141,11 +148,12 @@ for (w in 1:(tmax-1)) {
   std12[w] <- sd.xbar(mase12, rep(nmc*n,10), "UWAVE-SD")#sd.xbar(mase12, rep(nmc,10), "MR")
 }
 
-out <- foreach(i = 1:nmc, .combine='rbind') %dopar% {
+out <- c()
+for(i in 1:nmc) {
   set.seed(123+i-1)
   glist <- genTSG(n, nperturb, cperturb, rmin, rmax, tmax)
-  out2 <- doMase(glist, 2, dSVD,dASE,center, approx, py, method3)
-  out12 <- doMase(glist, tmax, 6,dASE,center, approx, py, method3)
+  out2 <- doMase(glist, nmase=2, dSVD=dSVD, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
+  out12 <- doMase(glist, nmase=tmax, dSVD=dSVD12, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
   df.dist2 <- melt(out2$pdist)
   names(df.dist2) <- c("vertex", "time", "pdist")
   df.dist2$time <- rep(factor(m2, levels=m2), each = n)
@@ -155,6 +163,7 @@ out <- foreach(i = 1:nmc, .combine='rbind') %dopar% {
   df.dist12$time <- rep(factor(m2, levels=m2), each = n)
   df.dist12 <- cbind(df.dist12,mc=i, mase="mase12")
   df.dist <- rbind(df.dist2,df.dist12)
+  out <- rbind(out, df.dist)
 }
 df <- out  %>% filter(mase=="mase2")
 df <- df[,c(-4,-5)]

@@ -116,7 +116,7 @@ p2 <- ggplot() +
   theme_void() + theme(legend.position="none",plot.title = element_text(hjust = 0.5, face = "italic"))+ggtitle("t = 7")
 p3 <- p0 +ggtitle("t = 8")
 
-p_latpos_illustration<-grid.arrange(p0,p1,p2,p3, ncol=2, heights=c(4,4))
+# p_latpos_illustration<-grid.arrange(p0,p1,p2,p3, ncol=2, heights=c(4,4))
 
 
 # independent of device size
@@ -172,7 +172,8 @@ plot.qcc.true(c1t,m2=m2)
 dev.off()
 
 # Figure 1b
-grid.arrange(p0,p1,p2,p3, ncol=2, heights=c(4,4))
+p_latpos_illustration<-grid.arrange(p0,p1,p2,p3, ncol=2, heights=c(4,4))
+# grid.arrange(p0,p1,p2,p3, ncol=2, heights=c(4,4))
 png("alpha0125illus.png", width = 4, height = 2.5, units="in", res=400)
 grid.arrange(p0,p1,p2,p3, ncol=2, heights=c(4,4))
 dev.off()

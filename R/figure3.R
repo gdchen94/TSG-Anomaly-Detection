@@ -19,10 +19,17 @@ source("../Utils/utils.R")
 
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 colors =  cbbPalette[c(7, 8, 4, 6)]
-py = FALSE
 method3 = 2
-dSVD=2
-dASE=1
+dSVD=NA
+dSVD12=NA
+dASE=NA
+nmc <- 1
+d.max <- "sqrt"#"full"
+approx <- FALSE
+center <- FALSE
+elbow_graph <- 1
+plot <- FALSE
+
 nullnmc <- 100
 pvalnmc <- 100
 tmax <- 12
@@ -35,26 +42,29 @@ rmin <- 0.2
 rmax <- 0.8
 center <- FALSE
 cperturb <- .15
-approx <- TRUE
+approx <- FALSE#TRUE
 center <- FALSE
 
 #pairwise mase
-out <- foreach(i = 1:nullnmc, .combine='rbind') %dopar% {
+out <- c()
+for(i in 1:nullnmc) {
   set.seed(123+i-1)
   glist <- genTSG(n, nperturb, cperturb=0, rmin, rmax, tmax)
-  out2 <- doMase(glist, 2, dSVD,dASE,center, approx, py, method3)
-  out12 <- doMase(glist, 12, 3,dASE,center, approx, py, method3)
+  out2 <- doMase(glist, nmase=2, dSVD=dSVD, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
+  out12 <- doMase(glist, nmase=tmax, dSVD=dSVD12, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
   out.p2 <- data.frame(as.vector(t(out2$tnorm[-c(5,6,7)])), mase="MASE(2)")
   colnames(out.p2)[1] <- "tnorm"
   out.p12 <- data.frame(as.vector(t(out12$tnorm[-c(5,6,7)])), mase="MASE(12)")
   colnames(out.p12)[1] <- "tnorm"
   out.p <- rbind(out.p2, out.p12)
+  out <- rbind(out, out.p)
 }
-df <- foreach(i = 1:pvalnmc, .combine='rbind') %dopar% {
+df <- c()
+for(i in 1:pvalnmc) {
   set.seed(123+nullnmc+i-1)
   glist <- genTSG(n, nperturb, cperturb, rmin, rmax, tmax)
-  out2 <- doMase(glist, 2, dSVD,dASE,center, approx, py, method3)
-  out12 <- doMase(glist, 12, 3,dASE, center, approx, py, method3)
+  out2 <- doMase(glist, nmase=2, dSVD=dSVD, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
+  out12 <- doMase(glist, nmase=tmax, dSVD=dSVD12, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
   pvalues2 <- rep(0, (tmax-1))
   pvalues12 <- rep(0, (tmax-1))
   for (j in 1:11) {
@@ -65,8 +75,7 @@ df <- foreach(i = 1:pvalnmc, .combine='rbind') %dopar% {
   pvalues12 <- p.adjust(pvalues12, "BH")
   df2 <- data.frame(time=factor(m2, levels=m2), pvalues=pvalues2, mc=i,mase="MASE(2)")
   df12 <- data.frame(time=factor(m2, levels=m2), pvalues=pvalues12, mc=i,mase="MASE(12)")
-  df <- rbind(df2, df12)
-  df
+  df <- rbind(df, rbind(df2, df12))
 }
 df <- df[,-3]
 df <- df %>%
@@ -103,23 +112,26 @@ p <-ggplot(dfommawoom12o, aes(x=time, y=pvalues, group=type)) +
 #------------------------vertex pvalues
 
 #pairwise mase
-out <- foreach(i = 1:nullnmc, .combine='rbind') %dopar% {
+out <- c()
+for(i in 1:nullnmc) {
   set.seed(123+i-1)
   glist <- genTSG(n, nperturb, cperturb=0, rmin, rmax, tmax)
-  out2 <- doMase(glist, 2, dSVD,dASE,center, approx, py, method3)
+  out2 <- doMase(glist, nmase=2, dSVD=dSVD, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
   #out2$pdist[,1]
-  out12 <- doMase(glist, 12, 3,dASE,center, approx, py, method3)
+  out12 <- doMase(glist, nmase=tmax, dSVD=dSVD12, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
   #out2$pdist[,1]
   out.p2 <- data.frame(t(out2$pdist[,-c(5,6,7)]), mase="MASE(2)")
   out.p12 <- data.frame(t(out12$pdist[,-c(5,6,7)]), mase="MASE(12)")
   out.p <- rbind(out.p2, out.p12)
+  out <- rbind(out, out.p)
 }
 
-df <- foreach(i = 1:pvalnmc, .combine='rbind') %dopar% {
+df <- c()
+for(i in 1:pvalnmc) {
   set.seed(123+nullnmc+i-1)
   glist <- genTSG(n, nperturb, cperturb, rmin, rmax, tmax)
-  out2 <- doMase(glist, 2, dSVD,dASE,center, approx, py, method3)
-  out12 <- doMase(glist, 12, 3,dASE, center, approx, py, method3)
+  out2 <- doMase(glist, nmase=2, dSVD=dSVD, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
+  out12 <- doMase(glist, nmase=tmax, dSVD=dSVD12, dASE=dASE, d.max=d.max, center=center, approx=approx, elbow_graph=elbow_graph, plot=plot, latent.form=method3)
   pvalues2 <- matrix(0, n, tmax-1)#rep(0, 11)
   pvalues12 <- matrix(0, n, tmax-1)
   for (j in 1:11) {
@@ -140,7 +152,7 @@ df <- foreach(i = 1:pvalnmc, .combine='rbind') %dopar% {
   df.p12$time <- rep(factor(m2, levels=m2), each = n)
   df.p12 <- cbind(df.p12,mc=i, mase="MASE(12)")
   df.p <- rbind(df.p2, df.p12)
-  df.p
+  df <- rbind(df, df.p)
 }
 dfmi <- df[,-4]
 # corrected for pvalues, change n() to n in z-norm
