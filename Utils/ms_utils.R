@@ -11,29 +11,29 @@
 #' @author Jes\'us Arroyo <jesus.arroyo@jhu.edu>
 #' 
 # modified the one in utils.R so it works on sparse matrices.
-ase <- function(A, d = NA, d.max = sqrt(ncol(A)), diag.augment = TRUE, elbow = 1) {
-  require(rARPACK)
-  # Diagonal augmentation
-  if(diag.augment & sum(abs(diag(A))) == 0) {
-    deg = colSums(A)
-    n = ncol(A)
-    diag(A) = deg / (n-1)
-  }
-  if(is.na(d)) {
-    eig <- eigs(A, d.max)
-    vals <- sort(x =  abs(eig$values), decreasing = TRUE)
-    d = getElbows(vals, plot = F)[elbow]
-    selected.eigs <- which(abs(eig$values) >= vals[d])
-    V <- eig$vectors[,selected.eigs, drop = F]
-    D <- diag(sqrt(abs(eig$values[selected.eigs])), nrow = d)
-    X <- V %*% D
-    return(X)
-  } else {
-    eig <- eigs(A, k = d)
-    X <- eig$vectors %*% diag(sqrt(abs(eig$values)), nrow = d)
-    return(X) 
-  }
-}
+# ase <- function(A, d = NA, d.max = sqrt(ncol(A)), diag.augment = TRUE, elbow = 1) {
+#   require(rARPACK)
+#   # Diagonal augmentation
+#   if(diag.augment & sum(abs(diag(A))) == 0) {
+#     deg = colSums(A)
+#     n = ncol(A)
+#     diag(A) = deg / (n-1)
+#   }
+#   if(is.na(d)) {
+#     eig <- eigs(A, d.max)
+#     vals <- sort(x =  abs(eig$values), decreasing = TRUE)
+#     d = getElbows(vals, plot = F)[elbow]
+#     selected.eigs <- which(abs(eig$values) >= vals[d])
+#     V <- eig$vectors[,selected.eigs, drop = F]
+#     D <- diag(sqrt(abs(eig$values[selected.eigs])), nrow = d)
+#     X <- V %*% D
+#     return(X)
+#   } else {
+#     eig <- eigs(A, k = d)
+#     X <- eig$vectors %*% diag(sqrt(abs(eig$values)), nrow = d)
+#     return(X) 
+#   }
+# }
 # Function to create a control chart for vertexAD across time points
 plot.qcc.vertex <- function(x, m2, add.stats = TRUE, chart.all = TRUE, s=s,
                             label.limits = "UCL", #c("LCL ", "UCL"),

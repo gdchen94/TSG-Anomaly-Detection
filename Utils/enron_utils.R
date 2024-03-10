@@ -18,16 +18,65 @@ beyond.limits <- function(object, limits = object$limits)
 }
 
 
-rdpg.sample.weight <- function(X) {
-  P <- X %*% t(X)
-  n <-  nrow(P)
-  U <- matrix(0, nrow = n, ncol = n)
-  U[col(U) > row(U)] <- runif(n*(n-1)/2)
-  U <- (U + t(U))
-  diag(U) <- runif(n)
-  A <- (U < P) + 0 ;
-  diag(A) <- 0
-  return(graph.adjacency(A,"undirected", weighted = TRUE))
+rdpg.sample.weight <- function(X, max_iter=25) {
+  require(Matrix)
+  nonzero_indices <- c()
+  iter <- 1
+  while((!sum(nonzero_indices)) & (iter <= max_iter)) {
+    
+    P <- X %*% t(X)
+    n <- nrow(P)
+    
+    # Create a sparse matrix for U
+    U <- Matrix(0, nrow = n, ncol = n, sparse = TRUE)
+    
+    # Directly compute the indices for the upper triangular part
+    rows <- c()
+    cols <- c()
+    for (i in 1:(n-1)) {
+      for (j in (i+1):n) {
+        rows <- c(rows, i)
+        cols <- c(cols, j)
+      }
+    }
+    
+    # Assign values to the upper triangular part
+    # values <- runif(length(rows))
+    # U[cbind(rows, cols)] <- values
+    
+    # Assign random values to the upper triangular part
+    U[cbind(rows, cols)] <- runif(length(rows))
+    
+    # Reflect the upper triangle to the lower triangle and set diagonal
+    U <- U + t(U)
+    
+    diag(U) <- runif(n)
+    
+    # Create a sparse matrix for A and compare with P
+    A <- as.matrix(U < P) * 1
+    # Set the diagonal of A to zero
+    diag(A) <- 0
+    # Find nonzero indices
+    nonzero_indices <- which(A != 0, arr.ind = TRUE)
+    iter <- iter + 1
+    # P <- X %*% t(X)
+    # n <-  nrow(P)
+    # U <- matrix(0, nrow = n, ncol = n)
+    # U[col(U) > row(U)] <- runif(n*(n-1)/2)
+    # U <- (U + t(U))
+    # diag(U) <- runif(n)
+    # A <- (U < P) + 0 ;
+    # diag(A) <- 0
+    # nonzero_indices <- which(A != 0, arr.ind = TRUE)
+  }
+  min_P <- min(P)
+  if (min_P <= 0) {
+    P <- P + abs(min_P) + 1e-9  # Adding a small constant to ensure positivity
+  }
+  A[nonzero_indices] <- rpois(length(nonzero_indices), lambda = P[nonzero_indices]) + 1
+  A <- A + t(A)
+  
+  return(ptr(graph.adjacency(A,"undirected", weighted = TRUE)))#(graph.adjacency(ptr(graph.adjacency(A,"undirected", weighted = TRUE)), weighted = TRUE))
 }
 
 
@@ -205,248 +254,248 @@ plot.qcc.vertex <- function(x, m2, add.stats = TRUE, chart.all = TRUE, s=s,
 }
 
 
-# This function calculates latent positions for multiple graphs via COSIE model, given individual ASE.
-# Arguments:
-#   A: A list of adjacency matrices.
-#   latpos.list: A list of latent position matrices obtained by individual ASE.
-#   d1, d2, d3: Dimensions parameters. d1 is for joint SVD, d3 is for individual ASE. d2 = d1 is fixed.
-#   center: Whether to center the adjacency matrices.
-#   verbose: Whether to print progress information.
-#   python: A flag (unused).
-#   SVD: Determines the method to construct latent positions in the COSIE models. 1: ASE(VRV^T) 2: VR 3: V|R|^{1/2}V^{T}
-
-jrdpg.latent <- function(A, latpos.list, d1=2,d2=1, d3=1,  center=FALSE, verbose=FALSE,python=TRUE, SVD=3){
-  d2 = d1
-  
-  m <- length(A)
-  A <- lapply(A, function(x) (x) )
-  
-  if (center) {
-    if (verbose) cat("do centering...\n")
-    Abar <- Reduce('+', A) / length(A)
-    A <- lapply(A, function(x) as.matrix(x-Abar))
-  }   
-  jrdpg <- mase(A, latpos.list,d1, d_vec=d3, scaled.ASE = TRUE,par = FALSE,show.scree.results = FALSE)
-  
-  if(SVD==3){
-    d2 <- dim(jrdpg$R[[1]])[1]
-    if (is.na(d2)){
-      B.svd <- lapply(jrdpg$R, function (x) svd(x) )
-      Xhat <- list()
-      for (i in 1:m) {
-        Xhat[[i]] <-  (jrdpg$V) %*% as.matrix(B.svd[[i]]$u) %*% diag(sqrt(B.svd[[i]]$d)) %*% diag(sign((B.svd[[i]]$d)) ) %*% t(as.matrix((B.svd[[i]]$u)) )  
-      }
-    }else{
-      B.svd <- lapply(jrdpg$R, function (x) svd(x) )
-      Xhat <- lapply(B.svd, function(x) (jrdpg$V) %*% as.matrix(x$u) %*% diag(sqrt(x$d), nrow=d2, ncol=d2) %*% diag(sign(x$d)) %*% t(as.matrix(x$u) )  ) 
-    }
-    
-  }else if (SVD==2){
-    Xhat <- lapply(jrdpg$R, function(x) as.matrix((jrdpg$V) %*% x) )
-  }else{
-    #(1)
-    P <- lapply(jrdpg$R, function (x) as.matrix((jrdpg$V) %*% x %*% t(jrdpg$V)) )
-    Xhat <- lapply(P, function(x) as.matrix( truncated.ase(x, d2,diagaug=FALSE, approx=FALSE )$Xhat))  
-  }
-    
-
-  return(list(Xhat=Xhat))
-}
-
-# This function computes the test stats given the Adjacency Spectral Embeddings (MASE) of a list of graphs.
-# Arguments:
-#   glist: A list of igraph objects.
-#   latpos.list: A list of latent position matrices.
-#   nmase: time span you used for embeddings. 2 or others.
-#   dmax, dsvd, d3: Dimension parameters. dmax is for joint SVD, d3 is for individual ASE.
-#   center: Whether to center the adjacency matrices.
-#   approx: Whether to use approximation method.
-#   python: A flag (unused).
-#   SVD: Determines the method to construct latent positions.
-#   attrweigth: Specifies the attribute to be used for the adjacency matrix if the graph has weighted edges.
-#newmase
-doMase <- function(glist, latpos.list, nmase=2, dmax, dsvd,d3=1, center=FALSE, approx=TRUE, python=TRUE,SVD=3,attrweigth=NULL)
-{
-  n <- vcount(glist[[1]])
-  tmax <- length(glist)
-  
-  if (nmase == 2) {
-    Xhat <- lapply(1:(tmax-1), function(x) jrdpg.latent(lapply(glist[x:(x+1)], function(y) get.adjacency(y,attr=attrweigth) ), latpos.list[x:(x+1)] , dmax, dsvd,d3, center=center,python = python, SVD = SVD))
-    norm <- sapply(1:(tmax-1), function(x) norm((Xhat[[x]]$Xhat)[[1]] - (Xhat[[x]]$Xhat)[[2]], "2"))
-    pdist <- sapply(1:(tmax-1), function(x) pdistXY((Xhat[[x]]$Xhat)[[1]] , (Xhat[[x]]$Xhat)[[2]]))
-    dsvd <- sapply(Xhat, function(x) x$d)
-  } else {
-    adj <- lapply(glist, function(y) get.adjacency(y, attr = attrweigth) )
-    Xhat <- jrdpg.latent(adj, latpos.list,dmax,dsvd,d3, center=center,python = python, SVD = SVD)
-    norm <- sapply(1:(tmax-1), function(x) norm(Xhat$Xhat[[x]]-Xhat$Xhat[[x+1]], "2"))
-    pdist <- sapply(1:(tmax-1), function(x) pdistXY(Xhat$Xhat[[x]], Xhat$Xhat[[x+1]]))
-    dsvd <- Xhat$d
-  }
-  
-  return(list(tnorm=norm, pdist=pdist,d=dsvd))
-}
-# This `mase` function applies the Multiple Adjacency Spectral Embedding (MASE) method 
-# to a list of adjacency matrices to embed them into a common latent position space via SVD, 
-# give the individual Adjacency Spectral Embeddings (ASE) of a list of graphs.
+# # This function calculates latent positions for multiple graphs via COSIE model, given individual ASE.
+# # Arguments:
+# #   A: A list of adjacency matrices.
+# #   latpos.list: A list of latent position matrices obtained by individual ASE.
+# #   d1, d2, d3: Dimensions parameters. d1 is for joint SVD, d3 is for individual ASE. d2 = d1 is fixed.
+# #   center: Whether to center the adjacency matrices.
+# #   verbose: Whether to print progress information.
+# #   python: A flag (unused).
+# #   SVD: Determines the method to construct latent positions in the COSIE models. 1: ASE(VRV^T) 2: VR 3: V|R|^{1/2}V^{T}
 # 
-# Parameters:
-#   Adj_list: A list of adjacency matrices.
-#   latpos.list: A list of estimated individual latent positions for each graph.
-#   d: Number of dimensions for the embedding. Default is NA.
-#   d_vec: Not used.
-#   scaled.ASE: Not used
-#   diag.augment: Not used
-#   elbow_graph: Not used
-#   elbow_mase: Number of elbows to consider for joint SVD in MASE.
-#   show.scree.results: Whether to display the scree plot results.
-#   par: Not used
-#   numpar: Not used
+# jrdpg.latent <- function(A, latpos.list, d1=2,d2=1, d3=1,  center=FALSE, verbose=FALSE,python=TRUE, SVD=3){
+#   d2 = d1
+#   
+#   m <- length(A)
+#   A <- lapply(A, function(x) (x) )
+#   
+#   if (center) {
+#     if (verbose) cat("do centering...\n")
+#     Abar <- Reduce('+', A) / length(A)
+#     A <- lapply(A, function(x) as.matrix(x-Abar))
+#   }   
+#   jrdpg <- mase(A, latpos.list,d1, d_vec=d3, scaled.ASE = TRUE,par = FALSE,show.scree.results = FALSE)
+#   
+#   if(SVD==3){
+#     d2 <- dim(jrdpg$R[[1]])[1]
+#     if (is.na(d2)){
+#       B.svd <- lapply(jrdpg$R, function (x) svd(x) )
+#       Xhat <- list()
+#       for (i in 1:m) {
+#         Xhat[[i]] <-  (jrdpg$V) %*% as.matrix(B.svd[[i]]$u) %*% diag(sqrt(B.svd[[i]]$d)) %*% diag(sign((B.svd[[i]]$d)) ) %*% t(as.matrix((B.svd[[i]]$u)) )  
+#       }
+#     }else{
+#       B.svd <- lapply(jrdpg$R, function (x) svd(x) )
+#       Xhat <- lapply(B.svd, function(x) (jrdpg$V) %*% as.matrix(x$u) %*% diag(sqrt(x$d), nrow=d2, ncol=d2) %*% diag(sign(x$d)) %*% t(as.matrix(x$u) )  ) 
+#     }
+#     
+#   }else if (SVD==2){
+#     Xhat <- lapply(jrdpg$R, function(x) as.matrix((jrdpg$V) %*% x) )
+#   }else{
+#     #(1)
+#     P <- lapply(jrdpg$R, function (x) as.matrix((jrdpg$V) %*% x %*% t(jrdpg$V)) )
+#     Xhat <- lapply(P, function(x) as.matrix( truncated.ase(x, d2,diagaug=FALSE, approx=FALSE )$Xhat))  
+#   }
+#     
+# 
+#   return(list(Xhat=Xhat))
+# }
 
-mase <- function(Adj_list, latpos.list, d = NA, d_vec = NA,
-                 scaled.ASE = TRUE, diag.augment = TRUE, 
-                 elbow_graph = 1, elbow_mase = 2,
-                 show.scree.results = FALSE,
-                 par = FALSE, numpar = 12) {
-  
-  # Replicating the dimensions vector for all adjacency matrices in the list
-  d_vec = rep(d_vec, length(Adj_list))
-  
-  # Combining all estimated latent positions
-  V_all  <- Reduce(cbind, latpos.list)
-  
-  # Performing Singular Value Decomposition (SVD) on the combined latent positions
-  require(rARPACK)
-  jointsvd <- svd(V_all)
-  
-  # If the number of dimensions 'd' is not provided, determine it using the elbow method
-  if(is.na(d)) {
-    # Optionally, show the estimated dimensions histogram for each graph
-    if(show.scree.results) {
-      hist(sapply(latpos.list, ncol), main = "Estimated d for each graph")
-    }
-    
-    # Apply the elbow method on the singular values from the SVD
-    result = getElbows(jointsvd$d, plot = show.scree.results)
-    
-    # Assign the result based on the outcome of the elbow method
-    if(length(result) == 1){
-      d = result
-    } else {
-      d = result[elbow_mase]
-    }
-  }
-  
-  # Extract the leading eigenvectors corresponding to the determined number of dimensions
-  V = jointsvd$u[, 1:d, drop = FALSE]
-  
-  # Project the graphs onto the common latent position space
-  R <- project_networks(Adj_list, V)
-  
-  # Return the embedded positions, singular values, and projections
-  return(list(V = V, sigma = jointsvd$d, R = R))
-}
+# # This function computes the test stats given the Adjacency Spectral Embeddings (MASE) of a list of graphs.
+# # Arguments:
+# #   glist: A list of igraph objects.
+# #   latpos.list: A list of latent position matrices.
+# #   nmase: time span you used for embeddings. 2 or others.
+# #   dmax, dsvd, d3: Dimension parameters. dmax is for joint SVD, d3 is for individual ASE.
+# #   center: Whether to center the adjacency matrices.
+# #   approx: Whether to use approximation method.
+# #   python: A flag (unused).
+# #   SVD: Determines the method to construct latent positions.
+# #   attr_weight: Specifies the attribute to be used for the adjacency matrix if the graph has weighted edges.
+# #newmase
+# doMase <- function(glist, latpos.list, nmase=2, dmax, dsvd,d3=1, center=FALSE, approx=TRUE, python=TRUE,SVD=3,attr_weight=NULL)
+# {
+#   n <- vcount(glist[[1]])
+#   tmax <- length(glist)
+#   
+#   if (nmase == 2) {
+#     Xhat <- lapply(1:(tmax-1), function(x) jrdpg.latent(lapply(glist[x:(x+1)], function(y) get.adjacency(y,attr=attr_weight) ), latpos.list[x:(x+1)] , dmax, dsvd,d3, center=center,python = python, SVD = SVD))
+#     norm <- sapply(1:(tmax-1), function(x) norm((Xhat[[x]]$Xhat)[[1]] - (Xhat[[x]]$Xhat)[[2]], "2"))
+#     pdist <- sapply(1:(tmax-1), function(x) pdistXY((Xhat[[x]]$Xhat)[[1]] , (Xhat[[x]]$Xhat)[[2]]))
+#     dsvd <- sapply(Xhat, function(x) x$d)
+#   } else {
+#     adj <- lapply(glist, function(y) get.adjacency(y, attr = attr_weight) )
+#     Xhat <- jrdpg.latent(adj, latpos.list,dmax,dsvd,d3, center=center,python = python, SVD = SVD)
+#     norm <- sapply(1:(tmax-1), function(x) norm(Xhat$Xhat[[x]]-Xhat$Xhat[[x+1]], "2"))
+#     pdist <- sapply(1:(tmax-1), function(x) pdistXY(Xhat$Xhat[[x]], Xhat$Xhat[[x+1]]))
+#     dsvd <- Xhat$d
+#   }
+#   
+#   return(list(tnorm=norm, pdist=pdist,d=dsvd))
+# }
+# # This `mase` function applies the Multiple Adjacency Spectral Embedding (MASE) method 
+# # to a list of adjacency matrices to embed them into a common latent position space via SVD, 
+# # give the individual Adjacency Spectral Embeddings (ASE) of a list of graphs.
+# # 
+# # Parameters:
+# #   Adj_list: A list of adjacency matrices.
+# #   latpos.list: A list of estimated individual latent positions for each graph.
+# #   d: Number of dimensions for the embedding. Default is NA.
+# #   d_vec: Not used.
+# #   scaled.ASE: Not used
+# #   diag.augment: Not used
+# #   elbow_graph: Not used
+# #   elbow_mase: Number of elbows to consider for joint SVD in MASE.
+# #   show.scree.results: Whether to display the scree plot results.
+# #   par: Not used
+# #   numpar: Not used
+# 
+# mase <- function(Adj_list, latpos.list, d = NA, d_vec = NA,
+#                  scaled.ASE = TRUE, diag.augment = TRUE, 
+#                  elbow_graph = 1, elbow_mase = 2,
+#                  show.scree.results = FALSE,
+#                  par = FALSE, numpar = 12) {
+#   
+#   # Replicating the dimensions vector for all adjacency matrices in the list
+#   d_vec = rep(d_vec, length(Adj_list))
+#   
+#   # Combining all estimated latent positions
+#   V_all  <- Reduce(cbind, latpos.list)
+#   
+#   # Performing Singular Value Decomposition (SVD) on the combined latent positions
+#   require(rARPACK)
+#   jointsvd <- svd(V_all)
+#   
+#   # If the number of dimensions 'd' is not provided, determine it using the elbow method
+#   if(is.na(d)) {
+#     # Optionally, show the estimated dimensions histogram for each graph
+#     if(show.scree.results) {
+#       hist(sapply(latpos.list, ncol), main = "Estimated d for each graph")
+#     }
+#     
+#     # Apply the elbow method on the singular values from the SVD
+#     result = getElbows(jointsvd$d, plot = show.scree.results)
+#     
+#     # Assign the result based on the outcome of the elbow method
+#     if(length(result) == 1){
+#       d = result
+#     } else {
+#       d = result[elbow_mase]
+#     }
+#   }
+#   
+#   # Extract the leading eigenvectors corresponding to the determined number of dimensions
+#   V = jointsvd$u[, 1:d, drop = FALSE]
+#   
+#   # Project the graphs onto the common latent position space
+#   R <- project_networks(Adj_list, V)
+#   
+#   # Return the embedded positions, singular values, and projections
+#   return(list(V = V, sigma = jointsvd$d, R = R))
+# }
 
 
-# This function computes the truncated Adjacency Spectral Embedding (ASE) for an adjacency matrix, choose elbow for first 200 dimensions.
-# Arguments:
-#   A: The adjacency matrix.
-#   d: The dimension for the embedding.
-#   diagaug: Whether to augment the diagonal of the adjacency matrix.
-#   approx: Whether to use approximation methods.
-#   elbow: The number of elbows to consider for dimension selection.
-truncated.ase <- function(A, d=NULL, diagaug=TRUE, approx=TRUE, elbow=2) {
-  #    set.seed(123)
-  n <- nrow(A)
-  dmax <- min(nrow(A), ncol(A)-1, 200)
-  show.scree.results <- FALSE
+# # This function computes the truncated Adjacency Spectral Embedding (ASE) for an adjacency matrix, choose elbow for first 200 dimensions.
+# # Arguments:
+# #   A: The adjacency matrix.
+# #   d: The dimension for the embedding.
+# #   diagaug: Whether to augment the diagonal of the adjacency matrix.
+# #   approx: Whether to use approximation methods.
+# #   elbow: The number of elbows to consider for dimension selection.
+# truncated.ase <- function(A, d=NULL, diagaug=TRUE, approx=TRUE, elbow=2) {
+#   #    set.seed(123)
+#   n <- nrow(A)
+#   dmax <- min(nrow(A), ncol(A)-1, 200)
+#   show.scree.results <- FALSE
+# 
+#   if (diagaug) {
+#     diag(A) <- rowSums(A) / (nrow(A)-1)
+#   }
+#   
+#   if (approx) {
+# 
+#     if (is.null(d)){
+#       A.svd <- irlba::irlba(A, dmax, maxit=10000, tol=1e-10)
+# 
+#       result = getElbows(A.svd$d, plot = show.scree.results)#[elbow_mase]
+#       if(length(result)==1){
+#         d = result
+#       }else{
+#         d = result[elbow]
+#       }
+#     }
+#     A.svd <- irlba::irlba(A,d, maxit=10000, tol=1e-10)
+#   } else {
+#     if (is.null(d)){
+#       A.svd <- svd(A,dmax)
+#       d <- dim_select(A.svd$d)
+#     }
+#     A.svd <- svd(A,d)
+#   }
+#   
+#   Xhat <- as.matrix(A.svd$u) %*% diag(sqrt(A.svd$d), nrow=d, ncol=d)
+#   return(list(eval=A.svd$d, Xhat=Matrix(Xhat), d=d))
+# }
 
-  if (diagaug) {
-    diag(A) <- rowSums(A) / (nrow(A)-1)
-  }
-  
-  if (approx) {
+# # This function constructs the omnibus matrix for 2 graphs.
+# # Alist: a list of n x n adjacency matrices or igraph objects
+# myfast2buildOmni <- function(Alist, diagaug=FALSE, center=FALSE, verbose=FALSE, attr_weight=NULL )
+# {
+#   require(igraph)
+#   require(Matrix)
+#   
+#   if (class(Alist[[1]]) == "igraph") {
+#     Alist <- lapply(Alist, function(x) get.adjacency(x, attr = attr_weight ) )
+#   }
+#   
+#   if (center) {
+#     if (verbose) cat("do centering...\n")
+#     Abar <- Reduce('+', Alist) / length(Alist)
+#     Alist <- lapply(Alist, function(x) as.matrix(x-Abar))
+#   }   
+#   
+#   if (diagaug) {
+#     Alist <- lapply(Alist, diagAug)
+#   }   
+#   
+#   omni <- cbind(Alist[[1]], (Alist[[1]]+Alist[[2]])/2 )
+#   omni <- rbind(omni, cbind((Alist[[1]]+Alist[[2]])/2, Alist[[2]]))
+#   return(omni)
+# }
 
-    if (is.null(d)){
-      A.svd <- irlba::irlba(A, dmax, maxit=10000, tol=1e-10)
-
-      result = getElbows(A.svd$d, plot = show.scree.results)#[elbow_mase]
-      if(length(result)==1){
-        d = result
-      }else{
-        d = result[elbow]
-      }
-    }
-    A.svd <- irlba::irlba(A,d, maxit=10000, tol=1e-10)
-  } else {
-    if (is.null(d)){
-      A.svd <- svd(A,dmax)
-      d <- dim_select(A.svd$d)
-    }
-    A.svd <- svd(A,d)
-  }
-  
-  Xhat <- as.matrix(A.svd$u) %*% diag(sqrt(A.svd$d), nrow=d, ncol=d)
-  return(list(eval=A.svd$d, Xhat=Matrix(Xhat), d=d))
-}
-
-# This function constructs the omnibus matrix for 2 graphs.
-# Alist: a list of n x n adjacency matrices or igraph objects
-myfast2buildOmni <- function(Alist, diagaug=FALSE, center=FALSE, verbose=FALSE, attrweigth=NULL )
-{
-  require(igraph)
-  require(Matrix)
-  
-  if (class(Alist[[1]]) == "igraph") {
-    Alist <- lapply(Alist, function(x) get.adjacency(x, attr = attrweigth ) )
-  }
-  
-  if (center) {
-    if (verbose) cat("do centering...\n")
-    Abar <- Reduce('+', Alist) / length(Alist)
-    Alist <- lapply(Alist, function(x) as.matrix(x-Abar))
-  }   
-  
-  if (diagaug) {
-    Alist <- lapply(Alist, diagAug)
-  }   
-  
-  omni <- cbind(Alist[[1]], (Alist[[1]]+Alist[[2]])/2 )
-  omni <- rbind(omni, cbind((Alist[[1]]+Alist[[2]])/2, Alist[[2]]))
-  return(omni)
-}
-
-# This function constructs the omnibus matrix for more than 2 graphs.
-# Arguments are similar to 'myfast2buildOmni'.
-myfast12buildOmni <- function(Alist, diagaug=FALSE, center=FALSE, verbose=FALSE, attrweigth=NULL)
-{
-  require(igraph)
-  require(Matrix)
-  
-  if (class(Alist[[1]]) == "igraph") {
-    Alist <- lapply(Alist, function(x) get.adjacency(x, attr = attrweigth ) )
-  }
-  
-  if (center) {
-    if (verbose) cat("do centering...\n")
-    Abar <- Reduce('+', Alist) / length(Alist)
-    Alist <- lapply(Alist, function(x) as.matrix(x-Abar))
-  }   
-  
-  if (diagaug) {
-    Alist <- lapply(Alist, diagAug)
-  }   
-  
-  m <- length(Alist)
-  nvec <- sapply(Alist, nrow)
-  nsum <- c(0, cumsum(nvec))
-  
-  
-  n = ncol(Alist[[1]])
-  Omni1 <- lapply(Alist, function(A) (Reduce(function(U,j) cbind(U, A), c(list(A), lapply(1:(m-1), function(i) i) ))))
-  Omni2 <- lapply(Alist, function(A) (Reduce(function(U,j) rbind(U, A), c(list(A), lapply(1:(m-1), function(i) i) ))))
-  Omni = (Reduce(rbind, Omni1) + Reduce(cbind, Omni2))/2
-  return(Omni)
-}
+# # This function constructs the omnibus matrix for more than 2 graphs.
+# # Arguments are similar to 'buildOmni'.
+# buildLargeOmni <- function(Alist, diagaug=FALSE, center=FALSE, verbose=FALSE, attr_weight=NULL)
+# {
+#   require(igraph)
+#   require(Matrix)
+#   
+#   if (class(Alist[[1]]) == "igraph") {
+#     Alist <- lapply(Alist, function(x) get.adjacency(x, attr = attr_weight ) )
+#   }
+#   
+#   if (center) {
+#     if (verbose) cat("do centering...\n")
+#     Abar <- Reduce('+', Alist) / length(Alist)
+#     Alist <- lapply(Alist, function(x) as.matrix(x-Abar))
+#   }   
+#   
+#   if (diagaug) {
+#     Alist <- lapply(Alist, diagAug)
+#   }   
+#   
+#   m <- length(Alist)
+#   nvec <- sapply(Alist, nrow)
+#   nsum <- c(0, cumsum(nvec))
+#   
+#   
+#   n = ncol(Alist[[1]])
+#   Omni1 <- lapply(Alist, function(A) (Reduce(function(U,j) cbind(U, A), c(list(A), lapply(1:(m-1), function(i) i) ))))
+#   Omni2 <- lapply(Alist, function(A) (Reduce(function(U,j) rbind(U, A), c(list(A), lapply(1:(m-1), function(i) i) ))))
+#   Omni = (Reduce(rbind, Omni1) + Reduce(cbind, Omni2))/2
+#   return(Omni)
+# }
 
 # This function computes norms and pairwise distances for embeddings obtained from the omnibus matrix.
 # Arguments:
@@ -456,49 +505,50 @@ myfast12buildOmni <- function(Alist, diagaug=FALSE, center=FALSE, verbose=FALSE,
 #   dmax: The maximum embedding dimension.
 #   center: Whether to center the adjacency matrices.
 #   approx: Whether to use approximation methods.
-doOmni <- function(glist, omniase=a,nomni=2, dmax=NULL, center=FALSE, approx=TRUE)
-{
-  n <- vcount(glist[[1]])
-  tmax <- length(glist)
-  
-  if (nomni == 2) {
-    norm <- sapply(omniase, function(x) norm((x[1:n,] - x[-(1:n),]),"2"))
-    pdist <- sapply(omniase, function(x) pdistXY(x[1:n,],x[-(1:n),])) 
-    
-  } else {
-    chunk <- running(1:nrow(omniase$Xhat), width=n, by=n, fun=function(x) x)
-    norm <- sapply(1:(tmax-1), function(x) norm(omniase$Xhat[chunk[,x],] - omniase$Xhat[chunk[,x+1],], "2"))
-    pdist <- sapply(1:(tmax-1), function(x) pdistXY(omniase$Xhat[chunk[,x],], omniase$Xhat[chunk[,x+1],]))
-  }
-  return(list(tnorm=norm, pdist=pdist))
-}
+# doOmni <- function(glist, omniase=a,nomni=2, dmax=NULL, center=FALSE, approx=TRUE)
+# {
+#   n <- vcount(glist[[1]])
+#   tmax <- length(glist)
+#   
+#   if (nomni == 2) {
+#     norm <- sapply(omniase, function(x) norm((x[1:n,] - x[-(1:n),]),"2"))
+#     pdist <- sapply(omniase, function(x) pdistXY(x[1:n,],x[-(1:n),])) 
+#     
+#   } else {
+#     chunk <- running(1:nrow(omniase$Xhat), width=n, by=n, fun=function(x) x)
+#     norm <- sapply(1:(tmax-1), function(x) norm(omniase$Xhat[chunk[,x],] - omniase$Xhat[chunk[,x+1],], "2"))
+#     pdist <- sapply(1:(tmax-1), function(x) pdistXY(omniase$Xhat[chunk[,x],], omniase$Xhat[chunk[,x+1],]))
+#   }
+#   return(list(tnorm=norm, pdist=pdist))
+# }
 
 # realdata_latpos_list_wrapper function: Computes latent positions for a list of graphs via doing individual ASE.
 # glist: List of igraph objects
 # fixedd: Specified embedding dimensions. Default is NULL.
+#   dASE: Dimension for individual ASE, auto if not specified.
+#   d.max: Maximum dimension for embeddings, default is "sqrt".
 # elbow_graph: Parameter for the elbow method to choose the number of dimensions, i.e. number of elbow, default 1.
-# graph_attr: Graph attribute (e.g., "weight")
-realdata_latpos_list_wrapper <- function(glist, fixedd=NULL, elbow_graph=1, graph_attr="weight") {
-  attrweigth = graph_attr
+# attr_weight: Graph attribute (e.g., "weight")
+realdata_latpos_list_wrapper <- function(glist, dASE=NA, d.max="sqrt", approx=FALSE, elbow_graph=1, attr_weight="weight") {
+  # attr_weight = attr_weight
   # approx <- TRUE
   center <- FALSE
   # #1
   diag.augment = TRUE
-  if (is.null(fixedd)) {
+  if (is.na(dASE)) {
     d_list <- list()
     for (i in 1:length(glist)) {
-      latpos <- truncated.ase( get.adjacency(glist[[i]], attr=attrweigth )  , d = NULL, approx = FALSE, elbow = elbow_graph)
-      d_list <- c(d_list, latpos$d)
+      latpos <- ase(get.adjacency(glist[[i]], attr=attr_weight ), d = dASE, d.max=d.max, diag.augment = TRUE, approx = approx, elbow = elbow_graph, plot=FALSE)#truncated.ase( get.adjacency(glist[[i]], attr=attr_weight )  , d = NULL, approx = approx, elbow = elbow_graph)
+      d_list <- c(d_list, dim(latpos)[2])
       
     }
     d <- round(median(unlist(d_list)))
   }else{
-    d <- fixedd
+    d <- dASE
   }
-  
   latpos.list <- list()
   for (i in 1:length(glist)) {
-    latpos <- ase( get.adjacency(glist[[i]], attr=attrweigth )  , d = d, d.max=vcount(glist[[1]]), diag.augment = diag.augment, elbow = elbow_graph)
+    latpos <- ase( get.adjacency(glist[[i]], attr=attr_weight )  , d = d, d.max=vcount(glist[[1]]), diag.augment = TRUE, approx = approx, elbow = elbow_graph, plot=FALSE)
     latpos.list <- c(latpos.list, list(latpos))
     
   }
@@ -511,20 +561,19 @@ realdata_latpos_list_wrapper <- function(glist, fixedd=NULL, elbow_graph=1, grap
 # fixedd: Specified embedding dimensions. Default is NULL.
 # elbow_graph: Parameter for the elbow method to choose the number of dimensions, i.e. number of elbow, default 1.
 # embed_span: Embedding span. Default is 2.
-# graph_attr: Graph attribute (e.g., "weight")
-realdata_doMase_wrapper <- function(glist, latpos.list=NULL, fixedd=NULL, elbow_graph=1, embed_span=2, graph_attr="weight") {
-  attrweigth = graph_attr
-  py = FALSE
+# attr_weight: Graph attribute (e.g., "weight")
+realdata_doMase_wrapper <- function(glist, latpos.list=NULL,dASE=NA, d.max="sqrt", approx=FALSE, elbow_graph=1, embed_span=2, attr_weight="weight") {#latpos.list=NULL, dASE=NA, d.max="sqrt", approx=FALSE,  elbow_graph=1, embed_span=2, attr_weight="weight") {
+  attr_weight = attr_weight
+
   method3 = 2  # latent position estimates are VR
   # approx <- TRUE
   center <- FALSE
   # #1
-  diag.augment = TRUE
   if (is.null(latpos.list)) {
-    latpos.list <- realdata_latpos_list_wrapper(glist, fixedd=fixedd, elbow_graph=elbow_graph, graph_attr=graph_attr)
+    latpos.list <- realdata_latpos_list_wrapper(glist, dASE=dASE, d.max=d.max, elbow_graph=elbow_graph, attr_weight=attr_weight)#dASE=dASE, d.max=d.max, elbow_graph=elbow_graph, attr_weight=attr_weight)
   }
   # no used of approx
-  out <- doMase(glist,latpos.list, embed_span, dmax=NA, dsvd=NA,d3=NA, center, approx=FALSE, py, method3,attrweigth)
+  out <- doMase(glist, latpos.list=latpos.list, nmase=embed_span, dSVD=NA, dASE=dASE, d.max=d.max, center=FALSE, approx=FALSE, elbow_graph=1, plot=FALSE,latent.form=method3, attr_weight=attr_weight, norm_choice="2")#(glist,latpos.list, embed_span, dmax=NA, dsvd=NA,d3=NA, center, approx=FALSE, py, method3,attr_weight)
   return(out)
 }
 
@@ -534,22 +583,38 @@ realdata_doMase_wrapper <- function(glist, latpos.list=NULL, fixedd=NULL, elbow_
 # fixedd: Specified embedding dimensions. Default is NULL.
 # elbow_graph: Parameter for the elbow method to choose the number of dimensions, i.e. number of elbow, default 1.
 # embed_span: Embedding span. Default is 2.
-# graph_attr: Graph attribute (e.g., "weight")
-realdata_doMase_wrapper3 <- function(glist, latpos.list=NULL, fixedd=NULL, elbow_graph=1, embed_span=2, graph_attr="weight") {
-  attrweigth = graph_attr
-  py = FALSE
-  # latent position estimates are V|R|^1/2V^T
-  method3 = 3
+# attr_weight: Graph attribute (e.g., "weight")
+realdata_doMase_wrapper3 <- function(glist, latpos.list=NULL, dASE=NA, d.max="sqrt", approx=FALSE, elbow_graph=1, embed_span=2, attr_weight="weight") {#latpos.list=NULL, dASE=NA, d.max="sqrt", approx=FALSE,  elbow_graph=1, embed_span=2, attr_weight="weight") {
+  attr_weight = attr_weight
+  
+  method3 = 3  # latent position estimates are V|R|^1/2V^T
+  # approx <- TRUE
   center <- FALSE
   # #1
   diag.augment = TRUE
   if (is.null(latpos.list)) {
-    latpos.list <- realdata_latpos_list_wrapper(glist, fixedd=fixedd,elbow_graph=elbow_graph, graph_attr=graph_attr)
+    latpos.list <- realdata_latpos_list_wrapper(glist, dASE=dASE, d.max=d.max, elbow_graph=elbow_graph, attr_weight=attr_weight)#dASE=dASE, d.max=d.max, elbow_graph=elbow_graph, attr_weight=attr_weight)
   }
   # no used of approx
-  out <- doMase(glist,latpos.list, embed_span, dmax=NA, dsvd=NA,d3=NA, center, approx=FALSE, py, method3,attrweigth)
+  out <- doMase(glist, latpos.list=latpos.list, nmase=embed_span, dSVD=NA, dASE=dASE, d.max=d.max, center=FALSE, approx=FALSE, elbow_graph=1, plot=FALSE,latent.form=method3, attr_weight=attr_weight, norm_choice="2")#(glist,latpos.list, embed_span, dmax=NA, dsvd=NA,d3=NA, center, approx=FALSE, py, method3,attr_weight)
   return(out)
 }
+
+# realdata_doMase_wrapper3 <- function(glist, latpos.list=NULL, dASE=NA, d.max="sqrt", approx=FALSE,  elbow_graph=1, embed_span=2, attr_weight="weight") {
+#   attr_weight = attr_weight
+#   py = FALSE
+#   # latent position estimates are V|R|^1/2V^T
+#   method3 = 3
+#   center <- FALSE
+#   # #1
+#   diag.augment = TRUE
+#   if (is.null(latpos.list)) {
+#     latpos.list <- realdata_latpos_list_wrapper(glist, dASE=dASE, d.max=d.max,elbow_graph=elbow_graph, attr_weight=attr_weight)
+#   }
+#   # no used of approx
+#   out <- doMase(glist,latpos.list, embed_span, dmax=NA, dsvd=NA,d3=NA, center, approx=FALSE, py, method3,attr_weight)
+#   return(out)
+# }
 
 
 # This function wraps around the Omni embedding process for a list of graphs to obtain test stats with time span 2.
@@ -559,31 +624,31 @@ realdata_doMase_wrapper3 <- function(glist, latpos.list=NULL, fixedd=NULL, elbow
 #   fixedd: Specified embedding dimensions. Default is NULL.
 #   elbow_graph: Parameter for the elbow method to choose the number of dimensions, i.e. number of elbow, default 1.
 #   embed_span: (Not used in the current function, placeholder)
-#   graph_attr: Graph attribute to use. Default is "weight".
-realdata_doOmni2_wrapper <- function(glist, latpos.list=NULL, fixedd=NULL, elbow_graph=1, embed_span=2, graph_attr="weight") {
-  attrweigth = graph_attr
+#   attr_weight: Graph attribute to use. Default is "weight".
+realdata_doOmni2_wrapper <- function(glist, latpos.list=NULL, dASE=NA, d.max="sqrt", approx=FALSE, elbow_graph=1, embed_span=2, attr_weight="weight") {
+  attr_weight = attr_weight
   
   # Configuration parameters for the function
   center <- FALSE
   diag.augment = TRUE
   
   # Determine the maximum dimensions based on the graph size or provided value
-  if (is.null(fixedd)) {
-    dmax = vcount(glist[[1]]) * 2
-  } else {
-    dmax = fixedd
-  }
+  # if (is.null(fixedd)) {
+  #   dmax = vcount(glist[[1]]) * 2
+  # } else {
+  #   dmax = fixedd
+  # }
   
   allomni = list()
   # Process pairs of consecutive graphs from the list to do OMNI embeddings
   for(i in 1:(length(glist)-1)) {
-    O = myfast2buildOmni(glist[i:(i+1)], center=center, diagaug=TRUE, attrweigth=attrweigth)
-    a = ase(O, d = NA, diag.augment = FALSE, d.max=dmax, elbow = elbow_graph)
+    O = buildOmni(glist[i:(i+1)], center=center, diagaug=TRUE, attr_weight=attr_weight)
+    a = ase( O  , d = dASE, d.max=d.max, diag.augment = FALSE, approx = approx, elbow = elbow_graph, plot=FALSE)#ase(O, d = NA, diag.augment = FALSE, d.max=dmax, elbow = elbow_graph)
     allomni = c(allomni, list(a))
   }
   
   # Finalize the Omni process to calculate the adjacent difference
-  out = doOmni(glist, allomni, nomni=2, dmax, center=center, approx=FALSE)
+  out = doOmni(glist, omniase=allomni, nomni=2, dASE=dASE, d.max=d.max, center=FALSE, approx=approx, elbow_graph=elbow_graph, plot=FALSE, attr_weight=attr_weight, norm_choice="2")#allomni, nomni=2, dmax, center=center, approx=FALSE)
   
   return(out)
 }
@@ -596,19 +661,18 @@ realdata_doOmni2_wrapper <- function(glist, latpos.list=NULL, fixedd=NULL, elbow
 #   fixedd: Specified embedding dimensions. Default is NULL.
 #   elbow_graph: Parameter for the elbow method to choose the number of dimensions, i.e. number of elbow, default 1.
 #   embed_span: (Not used in the current function, placeholder)
-#   graph_attr: Graph attribute to use. Default is "weight".
-realdata_doOmni12_wrapper <- function(glist, latpos.list=NULL, fixedd=NULL, elbow_graph=1, embed_span=2, graph_attr="weight") {
-  attrweigth = graph_attr
+#   attr_weight: Graph attribute to use. Default is "weight".
+realdata_doOmni12_wrapper <- function(glist, latpos.list=NULL, dASE=NA, d.max="sqrt", approx=FALSE,  elbow_graph=1, embed_span=2, attr_weight="weight") {
+  attr_weight = attr_weight
   
   # Configuration parameters for the function
   center <- FALSE
   diag.augment = TRUE
-  dmax = fixedd
   
   # Building and applying the Omni process
-  O = myfast12buildOmni(glist, center=center, diagaug=TRUE, attrweigth=attrweigth)
-  a = truncated.ase(O, d=dmax, diagaug=FALSE, approx=TRUE, elbow=elbow_graph)
-  out = doOmni(glist, a, nomni=12, dmax, center=center, approx=FALSE)
+  O = buildLargeOmni(glist, center=center, diagaug=TRUE, attr_weight=attr_weight)#myfast12buildOmni(glist, center=center, diagaug=TRUE, attr_weight=attr_weight)
+  a = ase( O, d = dASE, d.max=d.max, diag.augment = FALSE, approx = approx, elbow = elbow_graph, plot=FALSE)#truncated.ase(O, d=dmax, diagaug=FALSE, approx=TRUE, elbow=elbow_graph)
+  out = doOmni(glist, omniase=a, nomni=12, dASE=dASE, d.max=d.max, center=FALSE, approx=approx, elbow_graph=elbow_graph, plot=FALSE, attr_weight=attr_weight, norm_choice="2")#doOmni(glist, a, nomni=12, dmax, center=center, approx=FALSE)
   
   return(out)
 }
@@ -620,8 +684,8 @@ realdata_doOmni12_wrapper <- function(glist, latpos.list=NULL, fixedd=NULL, elbo
 #   fixedd: Not used, placeholder.
 #   elbow_graph: Not used, placeholder.
 #   embed_span: Not used, placeholder.
-#   graph_attr: Not used, placeholder.
-realdata_doScan_wrapper <- function(glist, latpos.list=NULL, fixedd=NULL, elbow_graph=1, embed_span=2, graph_attr="weight") {
+#   attr_weight: Not used, placeholder.
+realdata_doScan_wrapper <- function(glist, latpos.list=NULL, dASE=NA, d.max="sqrt", approx=FALSE,  elbow_graph=1, embed_span=2, attr_weight="weight") {
   out <- doScan(glist)
   
   return(out)
@@ -641,12 +705,12 @@ realdata_doScan_wrapper <- function(glist, latpos.list=NULL, fixedd=NULL, elbow_
 # t_window_size: Size of the time window to obtain null distribution. Default is 11.
 # method: Method for p-value adjustment. Default is "BH", Benjamini-Hochberg Procedure.
 # return_plot: Boolean to decide if a plot should be returned. Default is TRUE. Otherwise return a qcc object.
-# bootstrap_verbose: Boolean to indicate if bootstrapping is used for obtaining null distribution, . Default is FALSE, only use previous graphs in moving time window to obtain null distribution
-# graph_attr: Graph attribute. Default is NULL.
-get_graph_adj_pvals <- function(out, t_list, latpos.list, bootstrap_d=NULL, elbow_graph=1,
+# number_bootstrap: int, number of bootstrap samples is used for obtaining null distribution, . Default is 0, only use previous graphs in moving time window to obtain null distribution
+# attr_weight: Graph attribute. Default is "weight".
+get_graph_adj_pvals <- function(out, t_list, latpos.list, d.max="sqrt", elbow_graph=1,
                                 realdata_wrapper=realdata_doMase_wrapper, embed_span=2, xlab="time", 
                                 title=NULL, minx=NULL, t_window_size=11, method="BH", return_plot=TRUE, 
-                                bootstrap_verbose=FALSE, graph_attr=NULL) {
+                                number_bootstrap=0, attr_weight="weight") {
   
   # Length of the time-normalized data 
   tmax <- length(out$tnorm)
@@ -661,28 +725,27 @@ get_graph_adj_pvals <- function(out, t_list, latpos.list, bootstrap_d=NULL, elbo
   pvalues <- rep(0, tmax - t_window_size)
   p.adj.pvalues <- rep(0, tmax - t_window_size)
   
-  # Number of bootstrapped samples to generate null distribution
-  nmB <- 20 
-  
-  bootstrap_attr = graph_attr
+  bootstrap_attr = attr_weight
   
   # Loop through each time point
   for (i in 1:(tmax - t_window_size)) {
     
-    # If bootstrap_verbose is TRUE, compute p-values using bootstrapping
-    if (bootstrap_verbose) {
+    # If number_bootstrap is TRUE, compute p-values using bootstrapping
+    if (number_bootstrap) {
       null.dist <- c() # Placeholder for the null distribution
-      for (b in 1:nmB) {
+      for (b in 1:number_bootstrap) {
         # Create random graphs based on the latent positions
-        glist <- lapply(latpos.list[(i):(i+t_window_size)], function(x) rdpg.sample(x))
-        
+        glist <- lapply(latpos.list[(i):(i+t_window_size)], function(x) rdpg.sample.weight(x))
         # Get test stats from the random graphs
-        temp <- realdata_wrapper(glist, fixedd=bootstrap_d, elbow_graph=elbow_graph,
-                                 embed_span=embed_span, graph_attr=NULL)
+        #dASE=dASE, d.max=d.max, approx=approx,
+        # elbow_graph=elbow_graph, embed_span=embed_span, attr_weight="weight")
+        temp <- realdata_wrapper(glist, d.max=d.max, elbow_graph=elbow_graph, embed_span=embed_span, attr_weight=attr_weight)#NULL)
+          #realdata_wrapper(glist, fixedd=bootstrap_d, elbow_graph=elbow_graph,
+                                 #embed_span=embed_span, attr_weight=NULL)
         null.dist <- c(null.dist, temp$tnorm)
       }
       # Compute empirical p-value based on the bootstrapped null distribution
-      pvalues[i] <- sum(out$tnorm[i+t_window_size] < null.dist) / (t_window_size * nmB)
+      pvalues[i] <- sum(out$tnorm[i+t_window_size] < null.dist) / (t_window_size * number_bootstrap)
     }
     # Otherwise, compute p-values based on observed data
     else {
@@ -736,9 +799,9 @@ get_graph_adj_pvals <- function(out, t_list, latpos.list, bootstrap_d=NULL, elbo
 # realdata_wrapper: Function to obtain test stats.
 # embed_span: Embedding span. Default is 2.
 # xlab: x-axis label for plotting. Default is "time points"
-get_graph_qcc <- function(gip, t_list, latpos.list=NULL, fixedd=NULL, elbow_graph=1, 
+get_graph_qcc <- function(gip, t_list, latpos.list=NULL, dASE=NA, d.max="sqrt", approx=FALSE,  elbow_graph=1, 
                           realdata_wrapper=realdata_doMase_wrapper, embed_span=2, xlab="time points", 
-                          title=NULL, minx=NULL, t_window_size=11, return_plot=TRUE) {
+                          title=NULL, minx=NULL, t_window_size=11, return_plot=TRUE, attr_weight="weight") {
   
   # Setting the start index based on window size
   s <- t_window_size + 1
@@ -761,8 +824,12 @@ get_graph_qcc <- function(gip, t_list, latpos.list=NULL, fixedd=NULL, elbow_grap
     }
     
     # Call the data wrapper function to calculate test stats
-    out2 <- realdata_wrapper(gip[(w:(w+s-1))], latpos.list=temp.latpos.list, fixedd=fixedd, 
-                             elbow_graph=elbow_graph, embed_span=embed_span, graph_attr="weight")
+    out2 <- realdata_wrapper(gip[(w:(w+s-1))], latpos.list=temp.latpos.list, dASE=dASE, d.max=d.max, approx=approx,
+                                             elbow_graph=elbow_graph, embed_span=embed_span, attr_weight=attr_weight)
+      # doMase(gip[(w:(w+s-1))], latpos.list=temp.latpos.list, nmase=embed_span, dSVD=NA, dASE=dASE, d.max=d.max, center=FALSE, approx=FALSE, elbow_graph=1, plot=TRUE,latent.form=2, attr_weight=attr_weight, norm_choice="2")
+      #doMase(gip[(w:(w+s-1))], latpos.list=NA, nmase=embed_span, d.max="log", latent.form=2, attr_weight="weight", norm_choice="2")
+      #realdata_wrapper(gip[(w:(w+s-1))], latpos.list=temp.latpos.list, dASE=dASE, d.max=d.max, 
+            #                 elbow_graph=elbow_graph, embed_span=embed_span, attr_weight="weight")
     
     # Calculate the difference in normalized values
     diff_norm <- matrix(out2$tnorm, s-1, 1)
@@ -771,10 +838,16 @@ get_graph_qcc <- function(gip, t_list, latpos.list=NULL, fixedd=NULL, elbow_grap
     mean2[w] <- mean(diff_norm)
     std2[w] <- sd.xbar.one(diff_norm, rep(1,s-1), "MR")
   }
+
   
   # Get normalized values for the entire graph
-  out2 <- realdata_wrapper(gip, latpos.list=latpos.list, fixedd=fixedd, elbow_graph=elbow_graph, 
-                           embed_span=embed_span, graph_attr="weight")
+  out2 <- realdata_wrapper(gip, latpos.list=latpos.list, dASE=dASE, d.max=d.max, approx=approx, elbow_graph=elbow_graph, 
+                            embed_span=embed_span, attr_weight=attr_weight)
+    #doMase(gip, latpos.list=latpos.list, nmase=embed_span, dSVD=NA, dASE=dASE, d.max=d.max, center=FALSE, approx=FALSE, elbow_graph=1, plot=TRUE,latent.form=2, attr_weight=attr_weight, norm_choice="2")
+    #doMase(gip, latpos.list=NA, nmase=embed_span, d.max="sqrt", latent.form=2, attr_weight="weight", norm_choice="2")
+
+    #realdata_wrapper(gip, latpos.list=latpos.list, dASE=dASE, d.max=d.max, elbow_graph=elbow_graph, 
+                           # embed_span=embed_span, attr_weight="weight")
   df <- out2$tnorm
   diff_norm <- matrix(df, tmax-1, 1)
   
@@ -816,9 +889,9 @@ get_graph_qcc <- function(gip, t_list, latpos.list=NULL, fixedd=NULL, elbow_grap
 #   minx - x-axis text in the plot (default is NULL).
 #   t_window_size - Size of the time window (default is 11).
 #   return_plot - Boolean indicating whether to return a plot (default is TRUE).
-get_vertex_qcc <- function(gip, t_list, middle.max.inx=NULL, latpos.list=NULL, fixedd=NULL, elbow_graph=1, 
+get_vertex_qcc <- function(gip, t_list, middle.max.inx=NULL, latpos.list=NULL, dASE=NA, d.max="sqrt", approx=FALSE,  elbow_graph=1, 
                            realdata_wrapper=realdata_doMase_wrapper, embed_span=2, xlab="time points", 
-                           title=NULL, minx=NULL, t_window_size=11, return_plot=TRUE) {
+                           title=NULL, minx=NULL, t_window_size=11, return_plot=TRUE, attr_weight="weight") {
   
   # Get the number of vertices from the first graph
   n = vcount(gip[[1]])
@@ -844,8 +917,10 @@ get_vertex_qcc <- function(gip, t_list, middle.max.inx=NULL, latpos.list=NULL, f
     }
     
     # Call the data wrapper function to calculate test stats
-    out2 <- realdata_wrapper(gip[(w:(w+s-1))], latpos.list=temp.latpos.list, fixedd=fixedd, 
-                             elbow_graph=elbow_graph, embed_span=embed_span, graph_attr="weight")
+    out2 <- realdata_wrapper(gip[(w:(w+s-1))], latpos.list=temp.latpos.list, dASE=dASE, d.max=d.max, approx=approx, elbow_graph=elbow_graph, 
+                             embed_span=embed_span, attr_weight=attr_weight)
+      # realdata_wrapper(gip[(w:(w+s-1))], latpos.list=temp.latpos.list, dASE=dASE, d.max=d.max,
+      #                        elbow_graph=elbow_graph, embed_span=embed_span, attr_weight="weight")
     
     # Extract pairwise distances for the current window
     df <- out2$pdist
@@ -859,8 +934,10 @@ get_vertex_qcc <- function(gip, t_list, middle.max.inx=NULL, latpos.list=NULL, f
   }
   
   # Get pairwise distances for the entire graph
-  out2 <- realdata_wrapper(gip, latpos.list=latpos.list, fixedd=fixedd, elbow_graph=elbow_graph, 
-                           embed_span=embed_span, graph_attr="weight")
+  out2 <- realdata_wrapper(gip, latpos.list=latpos.list, dASE=dASE, d.max=d.max, approx=approx, elbow_graph=elbow_graph, 
+                                                  embed_span=embed_span, attr_weight=attr_weight)
+    # realdata_wrapper(gip, latpos.list=latpos.list, dASE=dASE, d.max=d.max, elbow_graph=elbow_graph, 
+    #                        embed_span=embed_span, attr_weight="weight")
   df <- out2$pdist
   diff_distv <- matrix(df, tmax-1, 1*n, byrow=TRUE)
   

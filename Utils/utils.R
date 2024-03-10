@@ -29,14 +29,16 @@ full.ase <- function(A, d, diagaug=TRUE, approx=TRUE) {
 # This function calculates latent positions for multiple graphs via COSIE model.
 # It takes in a list of adjacency matrices 'A' and returns their latent positions.
 # Parameters:
-#   A:             List of adjacency matrices.
-#   dSVD:          Dimension for joint singular value decomposition.
-#   dASE:          Dimension for adjacency spectral embedding.
-#   center:        If TRUE, mean centering is applied to adjacency matrices.
-#   verbose:       If TRUE, additional messages are printed.
-#   python:        Flag (unused in the current function but could be for potential future extensions).
-#   latent.form:   Form of the latent representation. Can take values 1, 2, or 3.
-jrdpg.latent <- function(A, dSVD=NA, dASE, center=FALSE, verbose=FALSE, python=FALSE, latent.form=2) {
+#   A:           List of adjacency matrices.
+#   dSVD:        Dimension for joint singular value decomposition, auto if not specified.
+#   dASE:        Dimension for adjacency spectral embedding, auto if not specified.
+#   d.max:       Maximum dimension for embeddings, default is "full".
+#   approx:      If TRUE, an approximate singular value decomposition method is used.
+#   center:      If TRUE, mean centering is applied to adjacency matrices, default FALSE.
+#   verbose:     If TRUE, prints additional messages, default FALSE.
+#   plot:        If TRUE, plots scree results, default TRUE.
+#   latent.form: Form of the latent representation, can be 1, 2, or 3, default 2.
+jrdpg.latent <- function(A, latpos.list = NULL, dSVD=NA, dASE=NA, d.max="full", approx=FALSE, center=FALSE, verbose=FALSE, elbow_graph=1, plot=TRUE, latent.form=2) {
   
   m <- length(A)
   A <- lapply(A, function(x) (x) )
@@ -49,7 +51,7 @@ jrdpg.latent <- function(A, dSVD=NA, dASE, center=FALSE, verbose=FALSE, python=F
   }   
   
   # Compute the joint embedding using the 'mase' function
-  jrdpg <- mase(A, d = dSVD, d_vec=dASE)
+  jrdpg <- mase(A, latpos.list = latpos.list, d = dSVD, d_vec=dASE, d.max=d.max, approx=approx, elbow_graph=elbow_graph, show.scree.results=plot, par=FALSE)
   d2 <- dim(jrdpg$R[[1]])[1]
   
   # Obtain the latent representation based on the 'latent.form' value
@@ -73,13 +75,39 @@ diagAug <- function(A)
 }
 
 # Alist: a list of n x n adjacency matrices or igraph objects
-buildOmni <- function(Alist, diagaug=FALSE, center=FALSE, verbose=FALSE)
+buildOmni <- function(Alist, diagaug=FALSE, center=FALSE, verbose=FALSE, attr_weight=NULL )
 {
   require(igraph)
   require(Matrix)
   
   if (class(Alist[[1]]) == "igraph") {
-    Alist <- lapply(Alist, get.adjacency)
+    Alist <- lapply(Alist, function(x) get.adjacency(x, attr = attr_weight ) )
+  }
+  
+  if (center) {
+    if (verbose) cat("do centering...\n")
+    Abar <- Reduce('+', Alist) / length(Alist)
+    Alist <- lapply(Alist, function(x) as.matrix(x-Abar))
+  }   
+  
+  if (diagaug) {
+    Alist <- lapply(Alist, diagAug)
+  }   
+  
+  omni <- cbind(Alist[[1]], (Alist[[1]]+Alist[[2]])/2 )
+  omni <- rbind(omni, cbind((Alist[[1]]+Alist[[2]])/2, Alist[[2]]))
+  return(omni)
+}
+
+# This function constructs the omnibus matrix for more than 2 graphs.
+# Arguments are similar to 'buildOmni'.
+buildLargeOmni <- function(Alist, diagaug=FALSE, center=FALSE, verbose=FALSE, attr_weight=NULL)
+{
+  require(igraph)
+  require(Matrix)
+  
+  if (class(Alist[[1]]) == "igraph") {
+    Alist <- lapply(Alist, function(x) get.adjacency(x, attr = attr_weight ) )
   }
   
   if (center) {
@@ -96,17 +124,47 @@ buildOmni <- function(Alist, diagaug=FALSE, center=FALSE, verbose=FALSE)
   nvec <- sapply(Alist, nrow)
   nsum <- c(0, cumsum(nvec))
   
-  omni <- as.matrix(bdiag(Alist))
-  for (i in 1:(m-1)) {
-    irng <- (nsum[i]+1):nsum[i+1] 
-    for (j in (i+1):m) {
-      jrng <- (nsum[j]+1):nsum[j+1]
-      omni[irng,jrng] <- (as.matrix(Alist[[i]]) + as.matrix(Alist[[j]])) / 2
-      omni[jrng,irng] <- omni[irng,jrng]
-    }
-  }
-  return(omni)
+  
+  n = ncol(Alist[[1]])
+  Omni1 <- lapply(Alist, function(A) (Reduce(function(U,j) cbind(U, A), c(list(A), lapply(1:(m-1), function(i) i) ))))
+  Omni2 <- lapply(Alist, function(A) (Reduce(function(U,j) rbind(U, A), c(list(A), lapply(1:(m-1), function(i) i) ))))
+  Omni = (Reduce(rbind, Omni1) + Reduce(cbind, Omni2))/2
+  return(Omni)
 }
+# buildOmni <- function(Alist, diagaug=FALSE, center=FALSE, verbose=FALSE)
+# {
+#   require(igraph)
+#   require(Matrix)
+#   
+#   if (class(Alist[[1]]) == "igraph") {
+#     Alist <- lapply(Alist, get.adjacency)
+#   }
+#   
+#   if (center) {
+#     if (verbose) cat("do centering...\n")
+#     Abar <- Reduce('+', Alist) / length(Alist)
+#     Alist <- lapply(Alist, function(x) as.matrix(x-Abar))
+#   }   
+#   
+#   if (diagaug) {
+#     Alist <- lapply(Alist, diagAug)
+#   }   
+#   
+#   m <- length(Alist)
+#   nvec <- sapply(Alist, nrow)
+#   nsum <- c(0, cumsum(nvec))
+#   
+#   omni <- as.matrix(bdiag(Alist))
+#   for (i in 1:(m-1)) {
+#     irng <- (nsum[i]+1):nsum[i+1] 
+#     for (j in (i+1):m) {
+#       jrng <- (nsum[j]+1):nsum[j+1]
+#       omni[irng,jrng] <- (as.matrix(Alist[[i]]) + as.matrix(Alist[[j]])) / 2
+#       omni[jrng,irng] <- omni[irng,jrng]
+#     }
+#   }
+#   return(omni)
+# }
 
 # Sample undirected non-weighted adjacency graph G~RDPG(X)
 rdpg.sample <- function(X) {
@@ -312,26 +370,48 @@ truenorm <- function(n, nperturb, cperturb=NULL, rmin, rmax, tmax){
 # This function computes norms and pairwise distances for embeddings obtained from the omnibus matrix.
 # Arguments:
 #   glist: A list of igraph objects.
+#   omniase: An object containing the results of the omnibus embedding.
+# doOmni <- function(glist, omniase=a,nomni=2, dASE=NA, d.max="full", center=FALSE, approx=TRUE, norm_choice="F")
+# {
+#   n <- vcount(glist[[1]])
+#   tmax <- length(glist)
+#   
+#   if (nomni == 2) {
+#     norm <- sapply(omniase, function(x) norm((x[1:n,] - x[-(1:n),]),"2"))
+#     pdist <- sapply(omniase, function(x) pdistXY(x[1:n,],x[-(1:n),])) 
+#     
+#   } else {
+#     chunk <- running(1:nrow(omniase$Xhat), width=n, by=n, fun=function(x) x)
+#     norm <- sapply(1:(tmax-1), function(x) norm(omniase$Xhat[chunk[,x],] - omniase$Xhat[chunk[,x+1],], "2"))
+#     pdist <- sapply(1:(tmax-1), function(x) pdistXY(omniase$Xhat[chunk[,x],], omniase$Xhat[chunk[,x+1],]))
+#   }
+#   return(list(tnorm=norm, pdist=pdist))
+# }
 #   nomni: Number of omnibus embeddings to use.
 #   dmax: The maximum embedding dimension.
 #   center: Whether to center the adjacency matrices.
 #   approx: Whether to use approximation methods.
-doOmni <- function(glist, nomni=2, dmax=NULL, center=FALSE, approx=TRUE)
+doOmni <- function(glist, omniase=NULL, nomni=2, dASE=NA, d.max="full", center=FALSE, approx=FALSE, elbow_graph=1, plot=TRUE, attr_weight=NULL, norm_choice="F")
 {
   n <- vcount(glist[[1]])
 
   tmax <- length(glist)
   if (nomni == 2) {
-    omni <- lapply(1:(tmax-1), function(x) buildOmni(glist[x:(x+1)], center=center, diagaug=TRUE))
-    ase <- lapply(omni, function(x) full.ase(x[], dmax, diagaug=FALSE, approx=approx))
-    norm <- sapply(ase, function(x) norm(x$Xhat[1:n,] - x$Xhat[-(1:n),], "F"))#"2"))
-    pdist <- sapply(ase, function(x) pdistXY(x$Xhat[1:n,],x$Xhat[-(1:n),])) #abs(x$Xhat[1:n,] - x$Xhat[-(1:n),]))
+    if (is.null(omniase)) {
+      omni <- lapply(1:(tmax-1), function(x) buildOmni(glist[x:(x+1)], center=center, diagaug=TRUE, attr_weight=attr_weight))
+      omniase <- lapply(omni, function(x) ase(x[], d = dASE, d.max=d.max, diag.augment = FALSE, approx = approx, elbow = elbow_graph, plot=plot))
+    }
+    norm <- sapply(omniase, function(x) norm((as.matrix(x[1:n, 1:(dim(x)[2])], nrow=n, ncol=dim(x)[2]) - as.matrix(x[-(1:n), 1:(dim(x)[2])], nrow=n, ncol=dim(x)[2])), norm_choice))
+    pdist <- sapply(omniase, function(x) pdistXY(as.matrix(x[1:n, 1:(dim(x)[2])], nrow=n, ncol=dim(x)[2]),as.matrix(x[-(1:n), 1:(dim(x)[2])], nrow=n, ncol=dim(x)[2]))) 
   } else {
-    omni <- buildOmni(glist, center=center, diagaug=TRUE)
-    ase <- full.ase(omni, dmax, diagaug=FALSE, approx=approx)
-    chunk <- running(1:nrow(omni), width=n, by=n, fun=function(x) x)
-    norm <- sapply(1:(tmax-1), function(x) norm(ase$Xhat[chunk[,x],] - ase$Xhat[chunk[,x+1],], "F"))
-    pdist <- sapply(1:(tmax-1), function(x) pdistXY(ase$Xhat[chunk[,x],], ase$Xhat[chunk[,x+1],]))
+    if (is.null(omniase)) {
+      omni <- buildLargeOmni(glist, center=center, diagaug=TRUE, attr_weight=attr_weight)
+      omniase <- ase(omni, d = dASE, d.max=d.max, diag.augment = FALSE, approx = approx, elbow = elbow_graph, plot=plot)
+    }
+    chunk <- running(1:nrow(omniase), width=n, by=n, fun=function(x) x)
+    common_d <- dim(omniase)[2]
+    norm <- sapply(1:(tmax-1), function(x) norm(as.matrix(omniase[chunk[,x], 1:common_d], nrow=n, ncol=common_d) - as.matrix(omniase[chunk[,x+1], 1:common_d], nrow=n, ncol=common_d), norm_choice))
+    pdist <- sapply(1:(tmax-1), function(x) pdistXY(as.matrix(omniase[chunk[,x], 1:common_d], nrow=n, ncol=common_d), as.matrix(omniase[chunk[,x+1], 1:common_d], nrow=n, ncol=common_d)))
   }
   #    sapply(omni, function(x) is.connected(graph_from_adjacency_matrix(x, "undirected")))
   return(list(tnorm=norm, pdist=pdist))
@@ -339,35 +419,107 @@ doOmni <- function(glist, nomni=2, dmax=NULL, center=FALSE, approx=TRUE)
 
 # This function computes norms and pairwise distances for the Multiple Adjacency Spectral Embedding (MASE) of a list of graphs.
 # Arguments:
-#   glist: A list of igraph objects.
-#   latpos.list: A list of latent position matrices.
-#   nmase: The s of MASE to perform.
-#   dSVD, dASE: Dimension parameters. dSVD is for joint SVD, dASE is for individual ASE.
-#   center: Whether to center the adjacency matrices.
-#   approx: Whether to use approximation method.
-#   python: A flag (unused).
-#   latent.form: Determines the method to construct latent positions.
-doMase <- function(glist, nmase=2, dSVD=NA, dASE=NULL, center=FALSE, approx=TRUE, python=TRUE,latent.form=3)
+#   glist: List of graph objects (compatible with igraph).
+#   nmase: Mode of MASE, default is 2.
+#   dSVD: Dimension for joint SVD, auto if not specified.
+#   dASE: Dimension for individual ASE, auto if not specified.
+#   d.max: Maximum dimension for embeddings, default is "full".
+#   center: Boolean for centering adjacency matrices, default FALSE.
+#   approx: Boolean for using approximation method, default TRUE.
+#   plot: Boolean for plotting results, default TRUE.
+#   latent.form: Integer, method for constructing latent positions, default 3.
+# Functionality:
+#   - Calculates adjacency matrices for glist.
+#   - Operates in two modes based on nmase:
+#     - If nmase is 2, processes adjacent graph pairs.
+#     - If nmase is not 2, processes all graphs individually.
+#   - Computes Frobenius norms and pairwise distances.
+#   - Returns norms (tnorm) and distances (pdist).
+doMase <- function(glist, latpos.list=NULL, nmase=2, dSVD=NA, dASE=NA, d.max="full", center=FALSE, approx=FALSE, elbow_graph=1, plot=TRUE,latent.form=3, attr_weight=NULL, norm_choice="F")
 {
   n <- vcount(glist[[1]])
   
   tmax <- length(glist)
   #Use Frobenius norm instead
   if (nmase == 2) {
-    adj <- lapply(1:(tmax-1), function(x) lapply(glist[x:(x+1)], get.adjacency))
-    Xhat <- lapply(adj, function(x) jrdpg.latent(as.matrix(x), dSVD, dASE, center=center,python = python, latent.form = latent.form))
-    norm <- sapply(1:(tmax-1), function(x) norm((Xhat[[x]])[[1]] - (Xhat[[x]])[[2]], "F"))
+    adj <- lapply(1:(tmax-1), function(x) lapply(glist[x:(x+1)], function(y) get.adjacency(y, attr=attr_weight) ))
+    adj_len <- length(adj)
+    Xhat <- list()
+    for (x in 1:adj_len) {
+      Xhat <- c(Xhat, list(jrdpg.latent(as.matrix(adj[[x]]), latpos.list=latpos.list[x:(x+1)], dSVD=dSVD, dASE=dASE, d.max=d.max, approx=approx, center=center, elbow_graph=elbow_graph, plot=plot, latent.form = latent.form)))
+    }
+    
+    norm <- sapply(1:(tmax-1), function(x) norm((Xhat[[x]])[[1]] - (Xhat[[x]])[[2]], norm_choice))
     pdist <- sapply(1:(tmax-1), function(x) pdistXY((Xhat[[x]])[[1]] , (Xhat[[x]])[[2]] ))
   } else {
-    adj <- lapply(lapply(glist, get.adjacency), as.matrix )
-    Xhat <- jrdpg.latent(adj,dSVD, dASE, center=center,python = python, latent.form = latent.form)
-    
-    norm <- sapply(1:(tmax-1), function(x) norm(Xhat[[x]]-Xhat[[x+1]], "F"))
+    adj <- lapply(glist, function(y) get.adjacency(y, attr = attr_weight))
+    Xhat <- jrdpg.latent(adj, latpos.list=latpos.list, dSVD=dSVD, dASE=dASE, d.max=d.max, approx=approx, center=center,elbow_graph=elbow_graph, plot=plot, latent.form = latent.form)
+    norm <- sapply(1:(tmax-1), function(x) norm(Xhat[[x]]-Xhat[[x+1]], norm_choice))
     pdist <- sapply(1:(tmax-1), function(x) pdistXY(Xhat[[x]], Xhat[[x+1]] ) )
-     
   }
   
   return(list(tnorm=norm, pdist=pdist))
+}
+
+processMethodOutput <- function(methodOutput, methodName, dataType) {
+  if (dataType == "tnorm") {
+    df <- data.frame(as.vector(t(methodOutput$tnorm[-c(5,6,7)])), Method=methodName)
+    colnames(df)[1] <- "tnorm"
+  } else if (dataType == "pdist") {
+    df <- data.frame(t(methodOutput$pdist[,-c(5,6,7)]), Method=methodName)
+  }
+  return(df)
+}
+
+# Function to calculate and update p-values
+calculatePValuesAndUpdateCounts <- function(out, outNullData, sigCount, dataType, tmax, n, nullnmc) {
+  pValues <- matrix(0, nrow = ifelse(dataType == "tnorm", 1, n), ncol = tmax - 1)
+  
+  for (j in 1:(tmax-1)) {
+    if (dataType == "tnorm") {
+      pValues[j] <- sum(out$tnorm[j] < outNullData[, 1]) / (nullnmc * 8)
+    } else {
+      for (w in 1:n) {
+        pValues[w, j] <- sum(out$pdist[w, j] < outNullData[, w]) / (nullnmc * 8)
+      }
+    }
+  }
+  
+  # Adjust p-values
+  pValuesAdjusted <- ifelse(dataType == "tnorm", p.adjust(pValues, "BH"), matrix(p.adjust(as.vector(pValues), "BH"), n, tmax-1))
+  
+  # Update count of significant p-values
+  sigCount <- sigCount + (pValuesAdjusted < 0.05)
+  return(sigCount)
+}
+
+processRankTransformAndStore <- function(out, methodType, mc, alpha, m2, n) {
+  rr <- apply(out$pdist, 2, function(x) rank(1 / x))
+  df_rr <- melt(1 / rr)
+  names(df_rr) <- c("vertex", "time", "rr")
+  df_rr$time <- rep(factor(m2, levels = m2), each = n)
+  df_rr <- cbind(df_rr, mc = mc, type = methodType, alpha = factor(alpha))
+  return(df_rr)
+}
+
+createTnormDataFrame <- function(sig_count, method, m2, pvalnmc, alpha) {
+  df <- data.frame(
+    time = factor(m2, levels = m2),
+    power = sig_count / pvalnmc,
+    se = sqrt((sig_count / pvalnmc) * (1 - sig_count / pvalnmc) / pvalnmc),
+    Method = method,
+    alpha = factor(alpha)
+  )
+  return(df)
+}
+
+# Function to create and return a data frame for pdist results
+createPdistDataFrame <- function(sig_count_pdist, method, m2, n, alpha) {
+  df_pdist <- melt(sig_count_pdist)
+  names(df_pdist) <- c("vertex", "time", "cts")
+  df_pdist$time <- rep(factor(m2, levels = m2), each = n)
+  df_pdist <- cbind(df_pdist, Method = method, alpha = factor(alpha))
+  return(df_pdist)
 }
 
 # This function computes norms and pairwise distances for the scan statistics of a list of graphs.
@@ -725,9 +877,6 @@ getElbows <- function(dat, n = 3, threshold = FALSE, plot = TRUE, main="", ...) 
   }
   
   q <- which.max(lq)
-  # print(n)
-  # print(q)
-  # print(p)
   if (n > 1 && q < (p-1)) {
     q <- c(q, q + getElbows(d[(q+1):p], n-1, plot=FALSE))
   }
@@ -1174,18 +1323,19 @@ gp.occ <- function(gpc, D, burn = .2, thin = 10) {
 
 # Duplicated /Users/guodongchen/Documents/Graduate_project/carey/AD/code/masetsg/mase.R sep 24, 2022
 #' 
-#' Function to perform multiple adjacency spectral embedding
-#' 
-#' @param Adj_list a list of adjacency matrices with the same size n x n
-#' @param d number of joint embedding dimensions. If NA, dimension is chosen automatically
-#' @param d_vec vector of individual embedding dimensions for each graph. If NA, it is the same as d.
-#' @param scaled.ASE logical. When true, the scaled adjacency spectral embedding is used.
-#' @param diag.augment logical. When true, the diagonal augmentation method for ASE is performed.
-#' @param elbow_graph number of elbow selected in Zhu & Ghodsi method for the scree plot of each individual graph eigenvalues.
-#' @param elbow_mase number of elbow selected in Zhu & Ghodsi method for the scree plot of the singular values of the concatenated spectral embeddings of MASE.
-#' @param show.scree.results when TRUE, the histogram of the estimated d for each graph, and the scree plot of the singular values of  the graph is shown if d is not specified.
-#' @param par whether to run in parallel (TRUE/FALSE)
-#' @param numpar number of clusters for parallel implmentation
+# mase Function
+# Purpose: Performs multiple adjacency spectral embedding (MASE).
+# @param Adj_list         List of adjacency matrices of the same size n x n.
+# @param d                Number of joint embedding dimensions (NA for automatic dimension).
+# @param d_vec            Vector of individual embedding dimensions for each graph (NA to use d for all).
+# @param d.max            Maximum dimension for embeddings, default is "full".
+# @param scaled.ASE       Logical, if TRUE, uses scaled adjacency spectral embedding, default TRUE.
+# @param diag.augment     Logical, if TRUE, performs diagonal augmentation method for ASE, default TRUE.
+# @param elbow_graph      Number of elbows in Zhu & Ghodsi method for individual graph eigenvalues, default 1.
+# @param elbow_mase       Number of elbows in Zhu & Ghodsi method for concatenated spectral embeddings of MASE, default 2.
+# @param show.scree.results If TRUE, shows histograms of estimated d for each graph and scree plot of singular values, default TRUE.
+# @param par              Logical, if TRUE, runs in parallel, default FALSE.
+# @param numpar           Number of clusters for parallel implementation, default 12.
 #' 
 #' @return A list containing a matrix V of size n x d, with the 
 #' estimated invariant subspace, and a list R with the individual score parameters for each graph (size d x d each).
@@ -1193,42 +1343,45 @@ gp.occ <- function(gpc, D, burn = .2, thin = 10) {
 #' @references 
 #' 
 #' @author Jes\'us Arroyo <jesus.arroyo@jhu.edu>
-mase <- function(Adj_list, d = NA, d_vec = NA,
-                 scaled.ASE = TRUE, diag.augment = TRUE, 
+mase <- function(Adj_list, latpos.list = NULL, d = NA, d_vec = NA, d.max = "full",
+                 scaled.ASE = TRUE, diag.augment = TRUE, approx = FALSE,
                  elbow_graph = 1, elbow_mase = 2,
-                 show.scree.results = FALSE,
+                 show.scree.results = TRUE,
                  par = FALSE, numpar = 12) {
   if(is.na(d_vec)) {
-    d_vec = rep(d, length(Adj_list))
+    d_vec = rep(d_vec, length(Adj_list))
   }
   # modify by GDC
   if(length(d_vec)<length(Adj_list)) {
     d_vec = rbind(d_vec,rep(d_vec[1], length(Adj_list)-length(d_vec)))
   }
-  # running in parallel
-  if(par) {
-    require(parallel)
-    cl <- makeCluster(numpar)
-    clusterEvalQ(cl, source("R/loadAll.R"))
-    clusterExport(cl = cl, varlist = list("ase", "eig_embedding", "getElbows", "Adj_list",
-                                          "elbow_graph", "d_vec", "diag.augment"), envir = environment())
-    if(scaled.ASE) {
-      latpos.list <- parLapply(cl = cl, 1:length(Adj_list), function(i) 
-        ase(Adj_list[[i]], d = d_vec[i], diag.augment = diag.augment, elbow = elbow_graph))
-    }else{
-      latpos.list <- parLapply(cl = cl, 1:length(Adj_list), function(i) 
-        eig_embedding(Adj_list[[i]], d = d_vec[i], diag.augment = diag.augment, elbow = elbow_graph))
-    }
-    stopCluster(cl)
-  } else {
-    if(scaled.ASE) {
-      latpos.list <- lapply(1:length(Adj_list), function(i) 
-        ase(Adj_list[[i]], d = d_vec[i], diag.augment = diag.augment, elbow = elbow_graph))
-    }else{
-      latpos.list <- lapply(1:length(Adj_list), function(i) 
-        eig_embedding(Adj_list[[i]], d = d_vec[i], diag.augment = diag.augment, elbow = elbow_graph))
+  if (is.null(latpos.list)) {
+    # running in parallel
+    if(par) {
+      require(parallel)
+      cl <- makeCluster(numpar)
+      clusterEvalQ(cl, source("R/loadAll.R"))
+      clusterExport(cl = cl, varlist = list("ase", "eig_embedding", "getElbows", "Adj_list",
+                                            "elbow_graph", "d_vec", "diag.augment"), envir = environment())
+      if(scaled.ASE) {
+        latpos.list <- parLapply(cl = cl, 1:length(Adj_list), function(i) 
+          ase(Adj_list[[i]], d = d_vec[i], d.max=d.max, diag.augment = diag.augment, approx = approx, elbow = elbow_graph, plot=show.scree.results))
+      }else{
+        latpos.list <- parLapply(cl = cl, 1:length(Adj_list), function(i) 
+          eig_embedding(Adj_list[[i]], d = d_vec[i], diag.augment = diag.augment, elbow = elbow_graph))
+      }
+      stopCluster(cl)
+    } else {
+      if(scaled.ASE) {
+        latpos.list <- lapply(1:length(Adj_list), function(i) 
+          ase(Adj_list[[i]], d = d_vec[i], d.max=d.max, diag.augment = diag.augment, approx = approx, elbow = elbow_graph, plot=show.scree.results))
+      }else{
+        latpos.list <- lapply(1:length(Adj_list), function(i) 
+          eig_embedding(Adj_list[[i]], d = d_vec[i], diag.augment = diag.augment, elbow = elbow_graph))
+      }
     }
   }
+  
   V_all  <- Reduce(cbind, latpos.list)
   require(rARPACK)
   jointsvd <- svd(V_all)
@@ -1236,7 +1389,16 @@ mase <- function(Adj_list, d = NA, d_vec = NA,
     if(show.scree.results) {
       hist(sapply(latpos.list, ncol), main = "Estimated d for each graph")
     }
-    d = getElbows(jointsvd$d, plot = show.scree.results)[elbow_mase]
+    scree.result <- getElbows(jointsvd$d, plot = show.scree.results)
+    if (length(scree.result)<elbow_mase){
+      # print("The estimated common subspace dimension is ")
+      # print(scree.result)
+      d = scree.result
+    }
+    else {
+      # scree.result <- getElbows(jointsvd$d, plot = show.scree.results)
+      d = scree.result[elbow_mase] 
+    }
   }
   V = jointsvd$u[, 1:d, drop = FALSE]
   R <- project_networks(Adj_list, V)
@@ -1248,37 +1410,92 @@ mase <- function(Adj_list, d = NA, d_vec = NA,
 #' 
 #' Function to perform graph adjacency spectral embedding (ASE)
 #' 
-#' @param A adjacency matrix
-#' @param d number of joint embedding dimensions. If NA, dimension is chosen automatically
-#' @param d.max maximum number of embedding dimensions to try when d is not provided. Default is sqrt(ncol(A)).
-#' @param diag.augment whether to do diagonal augmentation (TRUE/FALSE)
-#' @param elbow number of elbow selected in Zhu & Ghodsi method. Default is 1.
-#' @return A matrix with n rows and d columns containing the estimated latent positions
-#' 
+# @param A             Adjacency matrix.
+# @param d             Number of joint embedding dimensions (NA for automatic dimension).
+# @param d.max         Maximum number of embedding dimensions to try when d is NA.
+#                      Can be 'sqrt' (default, square root of the number of columns),
+#                      'log' (logarithm of the number of columns), 'full' (one less than the number of columns),
+#                      or a specific numeric value.
+# @param diag.augment  Whether to perform diagonal augmentation (TRUE/FALSE), default TRUE.
+# @param  approx: Whether to use approximation methods.
+# @param elbow         Number of elbows selected in Zhu & Ghodsi method, default is 1.
+# @param plot          If TRUE, plots the scree plot, default TRUE.
+# @return              A matrix with n rows and d columns containing the estimated latent positions.
 #' @author Jes\'us Arroyo <jesus.arroyo@jhu.edu>
 #' 
-ase <- function(A, d = NA, d.max = sqrt(ncol(A)), diag.augment = TRUE, elbow = 1) {
+ase <- function(A, d = NA, d.max = "sqrt", diag.augment = TRUE, approx=FALSE, elbow = 1, plot=TRUE) {
   require(rARPACK)
+  
+  if (d.max == "sqrt") {
+    d.max = round(sqrt(ncol(A)))
+  } else if (d.max == "log") {
+    d.max = round(log(ncol(A)))
+  } else if (typeof(d.max) == "double" | typeof(d.max) == "integer" | typeof(d.max) == "float") {
+    d.max = round(d.max)
+  } else if (d.max == "full") {
+    # pass
+  } else {
+    print("d.max error")
+  }
+  
   # Diagonal augmentation
   if(diag.augment & sum(abs(diag(A))) == 0) {
     deg = colSums(A)
     n = ncol(A)
     diag(A) = deg / (n-1)
   }
-  if(is.na(d)) {
-    eig <- eigs(as(A, "dgeMatrix"), d.max)
-    vals <- sort(x =  abs(eig$values), decreasing = TRUE)
-    d = getElbows(vals, plot = F)[elbow]
-    selected.eigs <- which(abs(eig$values) >= vals[d])
-    V <- eig$vectors[,selected.eigs, drop = F]
-    D <- diag(sqrt(abs(eig$values[selected.eigs])), nrow = d)
-    X <- V %*% D
-    return(X)
+  
+  if (approx) {
+    if (is.na(d)){
+      A.svd <- irlba::irlba(A, d.max, maxit=10000, tol=1e-10)
+      vals <- sort(x =  A.svd$d, decreasing = TRUE)
+      d = getElbows(vals, plot = plot)[elbow]
+      selected.svds <- which(A.svd$d >= vals[d])
+      # V <- A.svd$u[,selected.svds, drop = F]
+      # D <- diag(sqrt(A.svd$d[selected.svds]), nrow = d)
+      # X <- V %*% D
+      X <- as.matrix(A.svd$u[,selected.svds, drop = plot]) %*%  diag(sqrt(A.svd$d[selected.svds]), nrow=d, ncol=d)
+    } else {
+      A.svd <- irlba::irlba(A,d, maxit=10000, tol=1e-10)
+      X <- as.matrix(A.svd$u) %*% diag(sqrt(A.svd$d), nrow=d, ncol=d)
+    }
   } else {
-    eig <- eigs(as(A, "dgeMatrix"), k = d)
-    X <- eig$vectors %*% diag(sqrt(abs(eig$values)), nrow = d)
-    return(X) 
+    if (is.na(d) ){
+      if (d.max == "full") {
+        A.svd <- svd(A, ncol(A)-1)
+      } else {
+        A.svd <- svds(A, d.max)
+      }
+      vals <- sort(x =  A.svd$d, decreasing = TRUE)
+      d = getElbows(vals, plot = plot)[elbow]
+      selected.svds <- which(A.svd$d >= vals[d])
+      X <- as.matrix(A.svd$u[,selected.svds, drop = F]) %*%  diag(sqrt(A.svd$d[selected.svds]), nrow=d, ncol=d)
+    } else {
+      A.svd <- svds(A,d)
+      X <- as.matrix(A.svd$u) %*% diag(sqrt(A.svd$d), nrow=d, ncol=d)
+    }
   }
+  
+  # if(is.na(d)) {
+  #   A.svd <- svd(A, d.max)
+  #   result = getElbows(A.svd$d, plot = plot)
+  #   if(length(result)==1){
+  #     d = result
+  #   }else{
+  #     d = result[elbow]
+  #   }
+  #   eig <- eigs(A, d.max)
+  #   vals <- sort(x =  abs(eig$values), decreasing = TRUE)
+  #   d = getElbows(vals, plot = plot)[elbow]
+  #   selected.eigs <- which(abs(eig$values) >= vals[d])
+  #   V <- eig$vectors[,selected.eigs, drop = F]
+  #   D <- diag(sqrt(abs(eig$values[selected.eigs])), nrow = d)
+  #   X <- V %*% D
+  # } else {
+  #   eig <- eigs(A, k = d)
+  #   X <- eig$vectors %*% diag(sqrt(abs(eig$values)), nrow = d)
+  # }
+  return(X) 
 }
 
 #' 
@@ -1303,13 +1520,13 @@ eig_embedding <- function(A, d = NA, d.max = ncol(A), diag.augment = FALSE, elbo
     diag(A) = deg / (n-1)
   }
   if(is.na(d)) {
-    eig <- eigs(as(A, "dgeMatrix"), d.max)
+    eig <- eigs(A, d.max)
     vals <- sort(x =  abs(eig$values), decreasing = TRUE)#[1:sqrt(n)]
     d = getElbows(vals, plot = F)[elbow]
     selected.eigs <- which(abs(eig$values) >= vals[d])
     eig <- eig$vectors[,selected.eigs, drop = FALSE]
   }else {
-    eig <- eigs(as(A, "dgeMatrix"), k = d)$vectors 
+    eig <- eigs(A, k = d)$vectors 
   }
   return(eig)
 }
